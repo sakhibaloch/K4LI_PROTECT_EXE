@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# Build: VBScript AV evasion + XOR EXE encode + valid identifier names
 """
 K4LI EXE PROTECT — Advanced EXE Protection Suite v2.0
 """
