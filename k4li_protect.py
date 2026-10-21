@@ -620,6 +620,19 @@ class K4LIApp:
             label = "PDF" if file_type == "pdf" else "image"
             self._conv_ln(f"\n[ERROR]  No {label} selected.", "rd")
             return
+        # guard: extension must match selected mode
+        _fext = Path(file_path).suffix.lower()
+        if file_type == "pdf" and _fext != ".pdf":
+            self._conv_ln(f"\n[ERROR]  Mode is PDF but selected file is '{_fext}' — pick a PDF.", "rd")
+            return
+        if file_type == "image" and _fext == ".pdf":
+            self._conv_ln(f"\n[ERROR]  Mode is IMAGE but selected file is .pdf — switch mode or pick an image.", "rd")
+            return
+        # show exactly what will be bundled
+        self._conv_ln(f"\n[START]  Mode : {'PDF' if file_type == 'pdf' else 'IMAGE'}", "wh")
+        self._conv_ln(f"         EXE  : {Path(exe_path).name}", "g2")
+        self._conv_ln(f"         FILE : {Path(file_path).name}", "g2")
+        self._conv_ln(f"         OUT  : {out_name}.hta", "g2")
         self.conv_generating = True
         self.conv_gen_btn.configure(state="disabled", fg=C_G3, bg=BG_CARD)
         self.conv_pick_exe_btn.configure(state="disabled")
