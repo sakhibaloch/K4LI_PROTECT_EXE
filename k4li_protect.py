@@ -92,6 +92,10 @@ class K4LIApp:
         self.conv_generating  = False
         self.conv_preview_lbl = None
 
+        self._prot_canvas = None
+        self._conv_canvas = None
+        self._active_scroll_canvas = None
+
         self._build()
         self._center()
 
@@ -102,11 +106,46 @@ class K4LIApp:
         sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
         self.root.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
 
+    def _scrollable_frame(self, parent):
+        """Wrap parent in a Canvas+Scrollbar. Returns (inner_frame, canvas)."""
+        container = tk.Frame(parent, bg=BG_ROOT)
+        container.pack(fill="both", expand=True)
+        vsb = tk.Scrollbar(container, orient="vertical",
+                           bg=BG_PANEL, troughcolor=BG_PANEL,
+                           activebackground=C_G3, bd=0, width=6, relief="flat")
+        canvas = tk.Canvas(container, bg=BG_ROOT, highlightthickness=0, bd=0,
+                           yscrollcommand=vsb.set)
+        vsb.configure(command=canvas.yview)
+        vsb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        inner = tk.Frame(canvas, bg=BG_ROOT)
+        cw = canvas.create_window((0, 0), window=inner, anchor="nw")
+        def _on_inner_cfg(e):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        def _on_canvas_cfg(e):
+            canvas.itemconfig(cw, width=e.width)
+        inner.bind("<Configure>", _on_inner_cfg)
+        canvas.bind("<Configure>", _on_canvas_cfg)
+        return inner, canvas
+
     def _build(self):
         self._mk_header()
         self._mk_tabbar()
         tk.Frame(self.root, bg=BD_DIM, height=1).pack(fill="x")
         self._mk_content()
+        def _mw(event):
+            if isinstance(event.widget, tk.Text):
+                return
+            if self._active_scroll_canvas:
+                self._active_scroll_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        def _mw_linux(event, d):
+            if isinstance(event.widget, tk.Text):
+                return
+            if self._active_scroll_canvas:
+                self._active_scroll_canvas.yview_scroll(d, "units")
+        self.root.bind_all("<MouseWheel>", _mw)
+        self.root.bind_all("<Button-4>", lambda e: _mw_linux(e, -1))
+        self.root.bind_all("<Button-5>", lambda e: _mw_linux(e, 1))
 
     def _mk_header(self):
         hdr = tk.Frame(self.root, bg=BG_ROOT, height=68)
@@ -141,11 +180,13 @@ class K4LIApp:
             self.btn_conv.configure(fg=C_G3, bg=BG_ROOT)
             self.frm_conv.pack_forget()
             self.frm_prot.pack(fill="both", expand=True)
+            self._active_scroll_canvas = self._prot_canvas
         else:
             self.btn_prot.configure(fg=C_G3, bg=BG_ROOT)
             self.btn_conv.configure(fg=C_WH, bg=BG_CARD)
             self.frm_prot.pack_forget()
             self.frm_conv.pack(fill="both", expand=True)
+            self._active_scroll_canvas = self._conv_canvas
 
     def _mk_content(self):
         c = tk.Frame(self.root, bg=BG_ROOT)
@@ -161,7 +202,8 @@ class K4LIApp:
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     def _build_protect_tab(self):
         p = self.frm_prot
-        wrap = tk.Frame(p, bg=BG_ROOT, padx=22, pady=16)
+        _scroll_inner, self._prot_canvas = self._scrollable_frame(p)
+        wrap = tk.Frame(_scroll_inner, bg=BG_ROOT, padx=22, pady=16)
         wrap.pack(fill="both", expand=True)
 
         # ── File selector ──────────────────────────────────────────────────
@@ -394,7 +436,8 @@ class K4LIApp:
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     def _build_convert_tab(self):
         p    = self.frm_conv
-        wrap = tk.Frame(p, bg=BG_ROOT, padx=22, pady=16)
+        _scroll_inner, self._conv_canvas = self._scrollable_frame(p)
+        wrap = tk.Frame(_scroll_inner, bg=BG_ROOT, padx=22, pady=16)
         wrap.pack(fill="both", expand=True)
 
         # ── EXE picker ────────────────────────────────────────────────────
