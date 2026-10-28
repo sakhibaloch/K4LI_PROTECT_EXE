@@ -3519,11 +3519,11 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
 
             self._xlsx_ln(f"\n[2/4]  VBA macro ready  ({len(chunks)} data chunks)  ✓", "cy")
 
-            # PowerShell: create .xlsm via Excel COM
-            # Use forward slashes — PowerShell & Excel COM both accept them, avoids escape issues
-            ps_out = str(out_xlsm).replace("\\", "/")
-            b64_in = str(b64_file).replace("\\", "/")
-            vba_in = str(vba_file).replace("\\", "/")
+            # Save to temp path (no spaces) then Python moves to final destination
+            tmp_out   = tmp_dir / "output.xlsm"
+            tmp_out_ps = str(tmp_out).replace("\\", "/")
+            b64_in    = str(b64_file).replace("\\", "/")
+            vba_in    = str(vba_file).replace("\\", "/")
 
             ps_script = (
                 '$ErrorActionPreference = "Stop"\n'
@@ -3544,7 +3544,7 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
                 '  }\n'
                 f'  $vba = [System.IO.File]::ReadAllText("{vba_in}")\n'
                 '  $wb.VBProject.VBComponents.Item("ThisWorkbook").CodeModule.AddFromString($vba)\n'
-                f'  $wb.SaveAs("{ps_out}", 52)\n'
+                f'  $wb.SaveAs("{tmp_out_ps}", 52)\n'
                 '  $wb.Close($false)\n'
                 '  Write-Host "OK"\n'
                 '} finally {\n'
@@ -3565,6 +3565,12 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
             )
 
             self._xlsx_ln("\n[4/4]  Verifying output...", "cy")
+
+            if tmp_out.exists():
+                # Move from no-spaces temp path to final destination
+                if out_xlsm.exists():
+                    out_xlsm.unlink()
+                shutil.move(str(tmp_out), str(out_xlsm))
 
             if out_xlsm.exists():
                 sz2  = out_xlsm.stat().st_size
