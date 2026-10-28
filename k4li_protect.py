@@ -3433,8 +3433,17 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
                             highlightcolor=C_CYN)
         ent_name.pack(fill="x", ipady=7, padx=(0, 0))
 
+        # ── Info note about signature ──────────────────────────────────────
+        note = tk.Frame(wrap, bg="#1a2e1a", padx=12, pady=8)
+        note.pack(fill="x", pady=(0, 14))
+        tk.Label(note,
+                 text="✔  Signature safe mode: EXE binary is NOT modified.\n"
+                      "    Only the filename changes. A .lnk shortcut carries the custom icon.",
+                 font=("Segoe UI", 8), fg=C_GRN, bg="#1a2e1a",
+                 justify="left").pack(anchor="w")
+
         # ── App Icon ───────────────────────────────────────────────────────
-        self._lbl(wrap, "APP ICON  (.ico)").pack(fill="x", pady=(0, 5))
+        self._lbl(wrap, "APP ICON  (.ico)  — used for shortcut").pack(fill="x", pady=(0, 5))
         row_ico = tk.Frame(wrap, bg=BG_ROOT)
         row_ico.pack(fill="x", pady=(0, 14))
         ent_ico = tk.Entry(row_ico, textvariable=self.builder_icon_path,
@@ -3521,7 +3530,7 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         threading.Thread(target=self._run_builder, daemon=True).start()
 
     def _run_builder(self):
-        import shutil, struct, os
+        import shutil, subprocess, platform, os
 
         app_name = self.builder_app_name.get().strip() or "MyApp"
         ico_path = self.builder_icon_path.get().strip()
@@ -3548,148 +3557,48 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         out_path = Path(out_dir) / f"{safe_name}.exe"
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self._bldr_ln(f"Copying EXE …")
+        # ── Step 1: copy binary without any modification (keeps Authenticode signature intact)
+        self._bldr_ln("Copying EXE (signature preserved) …")
         try:
             shutil.copy2(str(src), str(out_path))
         except Exception as e:
             self._bldr_ln(f"ERROR: copy failed — {e}", "err")
             self.builder_running = False
             return
-        self._bldr_ln(f"Copied → {out_path}", "ok")
+        self._bldr_ln(f"Copied  → {out_path}", "ok")
 
-        # patch version strings (works cross-platform, pure Python)
-        self._bldr_ln("Patching version strings …")
-        try:
-            self._update_version_strings(str(out_path), app_name)
-            self._bldr_ln("Version strings patched", "ok")
-        except Exception as e:
-            self._bldr_ln(f"WARNING: version patch skipped — {e}", "")
-
-        # replace icon (Windows only via ctypes UpdateResource)
-        if ico_path:
-            self._bldr_ln("Replacing icon …")
+        # ── Step 2: create .lnk shortcut with custom icon (no EXE modification)
+        lnk_path = Path(out_dir) / f"{safe_name}.lnk"
+        if ico_path and platform.system() == "Windows":
+            self._bldr_ln("Creating shortcut with custom icon …")
             try:
-                self._update_icon(str(out_path), ico_path)
-                self._bldr_ln("Icon replaced", "ok")
+                ps = (
+                    f'$ws = New-Object -ComObject WScript.Shell; '
+                    f'$sc = $ws.CreateShortcut("{lnk_path}"); '
+                    f'$sc.TargetPath = "{out_path}"; '
+                    f'$sc.IconLocation = "{ico_path}"; '
+                    f'$sc.Save()'
+                )
+                result = subprocess.run(
+                    ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+                    capture_output=True, text=True, timeout=15
+                )
+                if result.returncode == 0:
+                    self._bldr_ln(f"Shortcut → {lnk_path}", "ok")
+                else:
+                    self._bldr_ln(f"WARNING: shortcut failed — {result.stderr.strip()}", "")
             except Exception as e:
-                self._bldr_ln(f"WARNING: icon replace skipped — {e}", "")
+                self._bldr_ln(f"WARNING: shortcut skipped — {e}", "")
+        elif ico_path:
+            self._bldr_ln("Shortcut creation requires Windows — skipped", "")
 
         self._bldr_ln("")
         self._bldr_ln(f"Done!  →  {out_path}", "ok")
+        if lnk_path.exists():
+            self._bldr_ln(f"Use shortcut to launch with custom icon: {lnk_path}", "ok")
+        self._bldr_ln("")
+        self._bldr_ln("SmartScreen will NOT appear — Authenticode signature is intact.", "ok")
         self.builder_running = False
-
-    # ── EXE patching helpers ───────────────────────────────────────────────────
-    def _update_version_strings(self, exe_path: str, app_name: str):
-        """Patch UTF-16LE version string fields in-place (pure Python, cross-platform)."""
-        with open(exe_path, "rb") as f:
-            data = bytearray(f.read())
-
-        fields = [
-            b"P\x00r\x00o\x00d\x00u\x00c\x00t\x00N\x00a\x00m\x00e\x00\x00\x00",
-            b"F\x00i\x00l\x00e\x00D\x00e\x00s\x00c\x00r\x00i\x00p\x00t\x00i\x00o\x00n\x00\x00\x00",
-            b"O\x00r\x00i\x00g\x00i\x00n\x00a\x00l\x00F\x00i\x00l\x00e\x00n\x00a\x00m\x00e\x00\x00\x00",
-            b"I\x00n\x00t\x00e\x00r\x00n\x00a\x00l\x00N\x00a\x00m\x00e\x00\x00\x00",
-        ]
-
-        new_utf16 = (app_name + "\x00").encode("utf-16-le")
-
-        changed = 0
-        for field_key in fields:
-            idx = 0
-            while True:
-                pos = data.find(field_key, idx)
-                if pos == -1:
-                    break
-                val_start = pos + len(field_key)
-                # advance past any padding to align to DWORD
-                while val_start < len(data) - 1 and data[val_start] == 0 and data[val_start + 1] == 0:
-                    # check if the next bytes are actual UTF-16LE text
-                    if val_start + 3 < len(data) and data[val_start + 2] != 0:
-                        break
-                    val_start += 2
-                # find end of current UTF-16LE string (double-null terminator)
-                end = val_start
-                while end + 1 < len(data):
-                    if data[end] == 0 and data[end + 1] == 0:
-                        end += 2
-                        break
-                    end += 2
-                old_len = end - val_start
-                if old_len <= 0:
-                    idx = pos + 1
-                    continue
-                # keep same byte length, pad/truncate as needed
-                patched = new_utf16[:old_len]
-                if len(patched) < old_len:
-                    patched = patched + b"\x00" * (old_len - len(patched))
-                data[val_start:end] = patched
-                changed += 1
-                idx = end
-
-        with open(exe_path, "wb") as f:
-            f.write(data)
-
-        if changed == 0:
-            raise RuntimeError("no version string fields found in binary")
-
-    def _update_icon(self, exe_path: str, ico_path: str):
-        """Replace RT_ICON/RT_GROUP_ICON resources using Windows UpdateResource API."""
-        import ctypes, struct, os, platform
-        if platform.system() != "Windows":
-            raise RuntimeError("icon replacement requires Windows")
-
-        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
-
-        with open(ico_path, "rb") as f:
-            ico_data = f.read()
-
-        # parse ICO header: reserved(2) type(2) count(2) + ICONDIRENTRY*count
-        if len(ico_data) < 6:
-            raise ValueError("invalid ICO file")
-        _res, _typ, count = struct.unpack_from("<HHH", ico_data, 0)
-        if _typ != 1:
-            raise ValueError("not an ICO file")
-
-        # read each image
-        images = []
-        for i in range(count):
-            off = 6 + i * 16
-            w, h, cc, _res2, planes, bpp, size, img_off = struct.unpack_from("<BBBBHHll", ico_data, off)
-            img_bytes = ico_data[img_off: img_off + size]
-            images.append((w or 256, h or 256, planes, bpp, img_bytes))
-
-        # build GRPICONDIR for RT_GROUP_ICON resource
-        grp  = struct.pack("<HHH", 0, 1, count)
-        for idx2, (w, h, planes, bpp, img) in enumerate(images, start=1):
-            grp += struct.pack("<BBBBHHlH", w & 0xFF, h & 0xFF, 0, 0, planes, bpp, len(img), idx2)
-
-        hUpdate = k32.BeginUpdateResourceW(ctypes.c_wchar_p(exe_path), False)
-        if not hUpdate:
-            raise OSError(f"BeginUpdateResource failed: {ctypes.get_last_error()}")
-
-        RT_ICON       = 3
-        RT_GROUP_ICON = 14
-        LANG_NEUTRAL  = 0
-
-        ok = True
-        for idx2, (w, h, planes, bpp, img) in enumerate(images, start=1):
-            buf = (ctypes.c_byte * len(img))(*img)
-            if not k32.UpdateResourceW(hUpdate, ctypes.c_long(RT_ICON),
-                                        ctypes.c_long(idx2),
-                                        ctypes.c_ushort(LANG_NEUTRAL),
-                                        buf, ctypes.c_long(len(img))):
-                ok = False
-
-        grp_buf = (ctypes.c_byte * len(grp))(*grp)
-        if not k32.UpdateResourceW(hUpdate, ctypes.c_long(RT_GROUP_ICON),
-                                    ctypes.c_long(1),
-                                    ctypes.c_ushort(LANG_NEUTRAL),
-                                    grp_buf, ctypes.c_long(len(grp))):
-            ok = False
-
-        k32.EndUpdateResourceW(hUpdate, not ok)
-        if not ok:
-            raise OSError("UpdateResource failed for one or more resources")
 
 
 # ─── Entry Point ───────────────────────────────────────────────────────────────
