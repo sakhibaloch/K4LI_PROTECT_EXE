@@ -3520,10 +3520,11 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
             self._xlsx_ln(f"\n[2/4]  VBA macro ready  ({len(chunks)} data chunks)  ✓", "cy")
 
             # Save to temp path (no spaces) then Python moves to final destination
-            tmp_out   = tmp_dir / "output.xlsm"
-            tmp_out_ps = str(tmp_out).replace("\\", "/")
-            b64_in    = str(b64_file).replace("\\", "/")
-            vba_in    = str(vba_file).replace("\\", "/")
+            # Keep native backslash paths — Excel COM does not accept forward slashes
+            tmp_out    = tmp_dir / "output.xlsm"
+            tmp_out_ps = str(tmp_out)
+            b64_in     = str(b64_file)
+            vba_in     = str(vba_file)
 
             ps_script = (
                 '$ErrorActionPreference = "Stop"\n'
