@@ -3462,7 +3462,7 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
                      bg=BG_CARD).pack(side="left")
 
         # ── Build button ───────────────────────────────────────────────────
-        self._ln(wrap).pack(fill="x", pady=(0, 14))
+        tk.Frame(wrap, bg=BD_DIM, height=1).pack(fill="x", pady=(0, 14))
         btn_build = tk.Button(wrap, text="▶  BUILD EXE",
                               font=("Segoe UI", 11, "bold"),
                               fg=BG_ROOT, bg=C_GRN, relief="flat", bd=0,
