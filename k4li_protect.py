@@ -3326,6 +3326,50 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
             self.root.after(0, lambda: self.xlsx_btn.configure(
                 state="normal", fg=BG_ROOT, bg=C_GRN))
 
+    def _lbl(self, parent, text, pack=True):
+        l = tk.Label(parent, text=text, font=F_HDR, fg=C_G2, bg=BG_ROOT, anchor="w")
+        if pack:
+            l.pack(fill="x", pady=(0, 4))
+        return l
+
+    def _sq_btn(self, parent, text, cmd,
+                fg=C_WH, bg=BG_IN, hover=BG_HOV,
+                font=F_BTN, padx=18, pady=7):
+        b = tk.Button(parent, text=text, font=font,
+                      fg=fg, bg=bg,
+                      activeforeground=fg, activebackground=hover,
+                      relief="flat", bd=0, padx=padx, pady=pady,
+                      cursor="hand2", command=cmd)
+        b.bind("<Enter>", lambda _: b.configure(bg=hover))
+        b.bind("<Leave>", lambda _: b.configure(bg=bg))
+        return b
+
+    def _steps(self, steps: list):
+        for label, delay in steps:
+            hx = "".join(random.choices("0123456789abcdef", k=10))
+            self._ln(f"        ▸ {label:<48}  0x{hx}", "g3")
+            self._sleep(delay)
+
+    def _ln(self, text: str, tag):
+        def _do():
+            self.log.configure(state="normal")
+            if tag:
+                self.log.insert("end", text + "\n", tag)
+            else:
+                self.log.insert("end", text + "\n")
+            self.log.see("end")
+            self.log.configure(state="disabled")
+        self.root.after(0, _do)
+
+    def _clear_log(self):
+        self.log.configure(state="normal")
+        self.log.delete("1.0", "end")
+        self.log.configure(state="disabled")
+        self._ln("[K4LI]  Log cleared.", "g3")
+
+    def _sleep(self, s: float):
+        time.sleep(s)
+
     def _set_prog(self, pct: int):
         def _do():
             self.root.update_idletasks()
