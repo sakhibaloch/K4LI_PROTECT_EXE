@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# v2.6 — fixed XLSM save path: temp dir (no spaces) + Python move to final destination
+# v2.7 — fixed XLSM path: native backslashes, Excel COM rejects forward slashes
 """
 K4LI EXE PROTECT — Advanced EXE Protection Suite v2.0
 """
