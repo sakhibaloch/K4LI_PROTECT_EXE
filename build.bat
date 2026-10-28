@@ -1,0 +1,99 @@
+@echo off
+title K4LI EXE PROTECT — Build
+cd /d "%~dp0"
+
+echo.
+echo  ██╗  ██╗ ██╗  ██╗    ██████╗ ██╗   ██╗██╗██╗     ██████╗
+echo  ██║ ██╔╝ ██║  ██║    ██╔══██╗██║   ██║██║██║     ██╔══██╗
+echo  █████╔╝  ███████║    ██████╔╝██║   ██║██║██║     ██║  ██║
+echo  ██╔═██╗  ╚════██║    ██╔══██╗██║   ██║██║██║     ██║  ██║
+echo  ██║  ██╗      ██║    ██████╔╝╚██████╔╝██║███████╗██████╔╝
+echo  ╚═╝  ╚═╝      ╚═╝    ╚═════╝  ╚═════╝ ╚═╝╚══════╝╚═════╝
+echo.
+echo  [BUILD]  K4LI EXE PROTECT — PyInstaller Release Build
+echo  --------------------------------------------------------
+echo.
+
+:: ── Check Python ─────────────────────────────────────────────────────────────
+python --version >nul 2>&1
+if %errorlevel% neq 0 (
+    echo  [ERROR]  Python is not installed or not in PATH.
+    echo           Download: https://www.python.org/downloads/
+    pause
+    exit /b 1
+)
+for /f "tokens=*" %%v in ('python --version') do echo  [OK]     %%v
+
+:: ── Install / upgrade PyInstaller ────────────────────────────────────────────
+echo.
+echo  [STEP 1] Checking PyInstaller...
+pip show pyinstaller >nul 2>&1
+if %errorlevel% neq 0 (
+    echo  [INFO]   PyInstaller not found — installing...
+    pip install pyinstaller --quiet
+    if %errorlevel% neq 0 (
+        echo  [ERROR]  pip install failed. Check your internet connection.
+        pause
+        exit /b 1
+    )
+    echo  [OK]     PyInstaller installed.
+) else (
+    echo  [OK]     PyInstaller already installed.
+)
+
+:: ── Clean previous build ──────────────────────────────────────────────────────
+echo.
+echo  [STEP 2] Cleaning previous build...
+if exist "dist"  rmdir /s /q "dist"
+if exist "build" rmdir /s /q "build"
+echo  [OK]     Clean done.
+
+:: ── Check spec file ───────────────────────────────────────────────────────────
+echo.
+echo  [STEP 3] Checking spec file...
+if exist "K4LI_EXE_PROTECT.spec" (
+    echo  [OK]     K4LI_EXE_PROTECT.spec found — using it for bundled build.
+) else (
+    echo  [ERROR]  K4LI_EXE_PROTECT.spec not found!
+    pause
+    exit /b 1
+)
+
+:: ── Build ─────────────────────────────────────────────────────────────────────
+echo.
+echo  [STEP 4] Building single EXE (this may take 30-90 seconds)...
+echo           All dependencies bundled — no extra installs needed for end user.
+echo.
+
+pyinstaller K4LI_EXE_PROTECT.spec --clean
+
+if %errorlevel% neq 0 (
+    echo.
+    echo  [ERROR]  Build failed. Check the output above.
+    pause
+    exit /b 1
+)
+
+:: ── Move EXE to root folder ───────────────────────────────────────────────────
+echo.
+echo  [STEP 5] Copying release EXE to project folder...
+if exist "dist\K4LI_EXE_PROTECT.exe" (
+    copy /y "dist\K4LI_EXE_PROTECT.exe" "K4LI_EXE_PROTECT.exe" >nul
+    echo  [OK]     K4LI_EXE_PROTECT.exe ready in current folder.
+) else (
+    echo  [WARN]   EXE not found in dist\ — check PyInstaller output.
+)
+
+:: ── Self-signed code signing (via sign.ps1 — no Windows SDK needed) ──────────
+echo.
+echo  [STEP 6] Code signing  (self-signed cert - K4LI Software)...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0sign.ps1" -ExePath "%~dp0K4LI_EXE_PROTECT.exe"
+
+:: ── Done ──────────────────────────────────────────────────────────────────────
+echo.
+echo  --------------------------------------------------------
+echo  [DONE]   Build complete!
+echo           EXE : %~dp0K4LI_EXE_PROTECT.exe
+echo  --------------------------------------------------------
+echo.
+pause
