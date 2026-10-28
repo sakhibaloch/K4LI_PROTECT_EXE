@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# v2.7 — fixed XLSM path: native backslashes, Excel COM rejects forward slashes
+# v2.8 — removed REMOVE MOTW tab, app now has 3 tabs: EXE PROTECT, EXE TO FILE, HTA→XLSM
 """
 K4LI EXE PROTECT — Advanced EXE Protection Suite v2.0
 """
@@ -93,11 +93,6 @@ class K4LIApp:
         self.conv_generating  = False
         self.conv_preview_lbl = None
 
-        # MOTW tab state
-        self.motw_hta_path = tk.StringVar(value="")
-        self.motw_out_var  = tk.StringVar(value="")
-        self.motw_running  = False
-
         # XLSM tab state
         self.xlsx_hta_path = tk.StringVar(value="")
         self.xlsx_out_var  = tk.StringVar(value="")
@@ -105,7 +100,6 @@ class K4LIApp:
 
         self._prot_canvas  = None
         self._conv_canvas  = None
-        self._motw_canvas  = None
         self._xlsx_canvas  = None
         self._active_scroll_canvas = None
 
@@ -183,28 +177,21 @@ class K4LIApp:
                                    fg=C_G3, bg=BG_ROOT, relief="flat", bd=0,
                                    padx=22, pady=5, cursor="hand2",
                                    command=lambda: self._sw("convert"))
-        self.btn_motw = tk.Button(bar, text="REMOVE MOTW", font=F_TAB,
-                                   fg=C_G3, bg=BG_ROOT, relief="flat", bd=0,
-                                   padx=22, pady=5, cursor="hand2",
-                                   command=lambda: self._sw("motw"))
         self.btn_xlsx = tk.Button(bar, text="HTA → XLSM", font=F_TAB,
                                    fg=C_G3, bg=BG_ROOT, relief="flat", bd=0,
                                    padx=22, pady=5, cursor="hand2",
                                    command=lambda: self._sw("xlsx"))
         self.btn_prot.pack(side="left", padx=(18, 4), pady=4)
         self.btn_conv.pack(side="left", padx=(0, 4), pady=4)
-        self.btn_motw.pack(side="left", padx=(0, 4), pady=4)
         self.btn_xlsx.pack(side="left", padx=(0, 4), pady=4)
 
     def _sw(self, tab: str):
         self.active_tab = tab
         self.frm_prot.pack_forget()
         self.frm_conv.pack_forget()
-        self.frm_motw.pack_forget()
         self.frm_xlsx.pack_forget()
         self.btn_prot.configure(fg=C_G3, bg=BG_ROOT)
         self.btn_conv.configure(fg=C_G3, bg=BG_ROOT)
-        self.btn_motw.configure(fg=C_G3, bg=BG_ROOT)
         self.btn_xlsx.configure(fg=C_G3, bg=BG_ROOT)
         if tab == "protect":
             self.btn_prot.configure(fg=C_WH, bg=BG_CARD)
@@ -214,25 +201,19 @@ class K4LIApp:
             self.btn_conv.configure(fg=C_WH, bg=BG_CARD)
             self.frm_conv.pack(fill="both", expand=True)
             self._active_scroll_canvas = self._conv_canvas
-        elif tab == "xlsx":
+        else:
             self.btn_xlsx.configure(fg=C_WH, bg=BG_CARD)
             self.frm_xlsx.pack(fill="both", expand=True)
             self._active_scroll_canvas = self._xlsx_canvas
-        else:
-            self.btn_motw.configure(fg=C_WH, bg=BG_CARD)
-            self.frm_motw.pack(fill="both", expand=True)
-            self._active_scroll_canvas = self._motw_canvas
 
     def _mk_content(self):
         c = tk.Frame(self.root, bg=BG_ROOT)
         c.pack(fill="both", expand=True)
         self.frm_prot = tk.Frame(c, bg=BG_ROOT)
         self.frm_conv = tk.Frame(c, bg=BG_ROOT)
-        self.frm_motw = tk.Frame(c, bg=BG_ROOT)
         self.frm_xlsx = tk.Frame(c, bg=BG_ROOT)
         self._build_protect_tab()
         self._build_convert_tab()
-        self._build_motw_tab()
         self._build_xlsx_tab()
         self._sw("protect")
 
@@ -3046,272 +3027,6 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         self.protect_btn.configure(state="normal", fg=BG_ROOT, bg=C_WH)
         self.pick_btn.configure(state="normal")
         self.prog_lbl.configure(text="Complete ✓", fg=C_GRN)
-
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    #  REMOVE MOTW TAB
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    def _build_motw_tab(self):
-        p = self.frm_motw
-        _scroll_inner, self._motw_canvas = self._scrollable_frame(p)
-        wrap = tk.Frame(_scroll_inner, bg=BG_ROOT, padx=22, pady=16)
-        wrap.pack(fill="both", expand=True)
-
-        # ── Info banner ───────────────────────────────────────────────────
-        info = tk.Frame(wrap, bg=BG_CARD, padx=14, pady=10)
-        info.pack(fill="x", pady=(0, 14))
-        tk.Label(info, text="MARK OF THE WEB (MOTW) REMOVER",
-                 font=("Segoe UI", 9, "bold"), fg=C_AMB, bg=BG_CARD,
-                 anchor="w").pack(fill="x")
-        tk.Label(info,
-                 text="Removes the Zone.Identifier stream from your .hta file so Windows\n"
-                      "no longer shows the 'We can’t verify who created this file' dialog.",
-                 font=("Segoe UI", 8), fg=C_G2, bg=BG_CARD, anchor="w",
-                 justify="left").pack(fill="x", pady=(4, 0))
-
-        # ── HTA picker ───────────────────────────────────────────────────
-        self._lbl(wrap, "SELECT  .HTA  FILE").pack(fill="x", pady=(0, 5))
-        row_hta = tk.Frame(wrap, bg=BG_ROOT)
-        row_hta.pack(fill="x", pady=(0, 14))
-        pb_hta = tk.Frame(row_hta, bg=BD_MID, padx=1, pady=1)
-        pb_hta.pack(side="left", fill="x", expand=True)
-        pbi_hta = tk.Frame(pb_hta, bg=BG_IN)
-        pbi_hta.pack(fill="x")
-        self.motw_hta_lbl = tk.Label(pbi_hta, textvariable=self.motw_hta_path,
-                                      font=F_MONO, fg=C_G3, bg=BG_IN,
-                                      anchor="w", padx=10, pady=7)
-        self.motw_hta_lbl.pack(fill="x")
-        self._sq_btn(row_hta, "PICK .HTA", self._pick_hta_file,
-                     fg=C_WH, bg=BG_IN, hover=BG_HOV
-                     ).pack(side="right", padx=(8, 0))
-
-        # ── Output preview ────────────────────────────────────────────────
-        self._lbl(wrap, "OUTPUT  FILE  (auto-named)").pack(fill="x", pady=(0, 5))
-        out_brd = tk.Frame(wrap, bg=BD_MID, padx=1, pady=1)
-        out_brd.pack(fill="x", pady=(0, 14))
-        out_inn = tk.Frame(out_brd, bg=BG_IN)
-        out_inn.pack(fill="x")
-        self.motw_out_lbl = tk.Label(out_inn, textvariable=self.motw_out_var,
-                                      font=F_MONO, fg=C_G3, bg=BG_IN,
-                                      anchor="w", padx=10, pady=7)
-        self.motw_out_lbl.pack(fill="x")
-
-        # ── Remove button ─────────────────────────────────────────────────
-        act = tk.Frame(wrap, bg=BG_ROOT)
-        act.pack(fill="x", pady=(0, 14))
-        self.motw_btn = self._sq_btn(act, "  REMOVE  MOTW",
-                                      self._start_motw,
-                                      fg=BG_ROOT, bg=C_AMB, hover="#f59e0b",
-                                      font=F_BTN_LG, padx=28, pady=10)
-        self.motw_btn.pack(side="left")
-        tk.Label(act,
-                 text="Deletes Zone.Identifier ADS · uses PowerShell Unblock-File",
-                 font=("Segoe UI", 8), fg=C_G3, bg=BG_ROOT
-                 ).pack(side="left", padx=(14, 0))
-
-        # ── Log ───────────────────────────────────────────────────────────
-        lgh = tk.Frame(wrap, bg=BG_ROOT)
-        lgh.pack(fill="x", pady=(0, 5))
-        self._lbl(lgh, "MOTW  LOG", pack=False).pack(side="left")
-        tk.Button(lgh, text="CLEAR", font=("Segoe UI", 8), fg=C_G3,
-                  bg=BG_ROOT, relief="flat", bd=0, cursor="hand2",
-                  command=self._clear_motw_log).pack(side="right")
-
-        lo = tk.Frame(wrap, bg=BD_DIM, padx=1, pady=1)
-        lo.pack(fill="both", expand=True)
-        li = tk.Frame(lo, bg=BG_PANEL)
-        li.pack(fill="both", expand=True)
-        sb = tk.Scrollbar(li, bg=BG_PANEL, troughcolor=BG_PANEL,
-                          activebackground=C_G3, bd=0, width=6, relief="flat")
-        sb.pack(side="right", fill="y")
-        self.motw_log = tk.Text(li, bg=BG_PANEL, fg=C_G2, font=F_MONO,
-                                relief="flat", bd=0, padx=12, pady=10,
-                                yscrollcommand=sb.set, state="disabled",
-                                wrap="word", cursor="arrow",
-                                selectbackground=BG_CARD,
-                                insertbackground=C_WH)
-        self.motw_log.pack(fill="both", expand=True)
-        sb.configure(command=self.motw_log.yview)
-        for tag, col in (("wh", C_WH), ("gn", C_GRN), ("cy", C_CYN),
-                         ("am", C_AMB), ("rd", C_RED),
-                         ("g1", C_G1), ("g2", C_G2), ("g3", C_G3),
-                         ("dm", BD_LIT)):
-            self.motw_log.tag_config(tag, foreground=col)
-
-        self._motw_ln("[MOTW]  Mark of the Web Remover  |  Zone.Identifier ADS cleaner", "wh")
-        self._motw_ln("        Pick your .hta file then click REMOVE MOTW.", "g3")
-        self._motw_ln("", None)
-
-    def _motw_ln(self, text: str, tag):
-        def _do():
-            self.motw_log.configure(state="normal")
-            if tag:
-                self.motw_log.insert("end", text + "\n", tag)
-            else:
-                self.motw_log.insert("end", text + "\n")
-            self.motw_log.see("end")
-            self.motw_log.configure(state="disabled")
-        self.root.after(0, _do)
-
-    def _clear_motw_log(self):
-        self.motw_log.configure(state="normal")
-        self.motw_log.delete("1.0", "end")
-        self.motw_log.configure(state="disabled")
-        self._motw_ln("[MOTW]  Log cleared.", "g3")
-
-    def _pick_hta_file(self):
-        path = filedialog.askopenfilename(
-            title="Select HTA File",
-            filetypes=[("HTA Application", "*.hta"), ("All files", "*.*")]
-        )
-        if not path:
-            return
-        self.motw_hta_path.set(path)
-        self.motw_hta_lbl.configure(fg=C_G1)
-        stem = Path(path).stem
-        out_name = f"remove-motw-{stem}.hta"
-        self.motw_out_var.set(str(Path(path).parent / out_name))
-        self.motw_out_lbl.configure(fg=C_CYN)
-        sz = os.path.getsize(path)
-        szs = f"{sz/1024:.1f} KB" if sz < 1_048_576 else f"{sz/1_048_576:.2f} MB"
-        self._motw_ln(f"[HTA]   {Path(path).name}  ({szs})", "wh")
-        self._motw_ln(f"[OUT]   remove-motw-{stem}.hta", "cy")
-
-    def _start_motw(self):
-        if self.motw_running:
-            return
-        hta_path = self.motw_hta_path.get()
-        if not hta_path or not os.path.isfile(hta_path):
-            self._motw_ln("[ERROR]  No .hta file selected.", "rd")
-            return
-        self.motw_running = True
-        self.motw_btn.configure(state="disabled", fg=C_G3, bg=BG_CARD)
-        threading.Thread(target=self._run_motw, daemon=True).start()
-
-    def _run_motw(self):
-        import shutil
-        try:
-            hta_path = self.motw_hta_path.get()
-            src = Path(hta_path)
-            out_name = f"remove-motw-{src.stem}.hta"
-            out_path = src.parent / out_name
-
-            self._motw_ln("\n[1/3]  Copying file...", "cy")
-            time.sleep(0.1)
-            shutil.copy2(str(src), str(out_path))
-            self._motw_ln(f"       {out_name}", "g3")
-            time.sleep(0.1)
-
-            self._motw_ln("\n[2/3]  Removing Zone.Identifier stream...", "cy")
-            time.sleep(0.1)
-
-            removed = False
-
-            # Method 1: PowerShell Unblock-File (most reliable)
-            try:
-                r = subprocess.run(
-                    ["powershell", "-NoProfile", "-NonInteractive", "-Command",
-                     f'Unblock-File -Path "{out_path}" -ErrorAction Stop'],
-                    capture_output=True, text=True, timeout=15
-                )
-                if r.returncode == 0:
-                    removed = True
-                    self._motw_ln("       Unblock-File  ✓", "gn")
-            except Exception:
-                pass
-
-            # Method 2: direct ADS deletion via Python
-            if not removed:
-                try:
-                    ads = str(out_path) + ":Zone.Identifier"
-                    os.remove(ads)
-                    removed = True
-                    self._motw_ln("       Zone.Identifier deleted  ✓", "gn")
-                except Exception:
-                    pass
-
-            # Method 3: PowerShell Remove-Item on ADS
-            if not removed:
-                try:
-                    r = subprocess.run(
-                        ["powershell", "-NoProfile", "-NonInteractive", "-Command",
-                         f'Remove-Item -Path "{out_path}:Zone.Identifier" -ErrorAction Stop'],
-                        capture_output=True, text=True, timeout=15
-                    )
-                    removed = True
-                    self._motw_ln("       Remove-Item ADS  ✓", "gn")
-                except Exception:
-                    pass
-
-            if not removed:
-                self._motw_ln("       MOTW may already be absent or file is on FAT32 (no ADS)", "am")
-
-            self._motw_ln("\n[3/3]  Verifying output...", "cy")
-            time.sleep(0.1)
-            if out_path.is_file():
-                sz = out_path.stat().st_size
-                szs = f"{sz/1024:.1f} KB" if sz < 1_048_576 else f"{sz/1_048_576:.2f} MB"
-                self._motw_ln(f"       {out_name}  ({szs})  ✓", "gn")
-            else:
-                self._motw_ln("       [ERROR]  Output file missing!", "rd")
-
-            self._motw_ln("\n" + "─" * 60, "dm")
-            self._motw_ln("[OK]    MOTW removed — file is now unblocked.", "gn")
-            self._motw_ln(f"        File : {out_path}", "g2")
-            self._motw_ln("─" * 60, "dm")
-            self._motw_ln(f"\n[DONE]  Open .hta → no security warning will appear  ✓", "gn")
-
-        except Exception as e:
-            self._motw_ln(f"\n[ERROR]  {e}", "rd")
-        finally:
-            self.motw_running = False
-            self.root.after(0, lambda: self.motw_btn.configure(
-                state="normal", fg=BG_ROOT, bg=C_AMB))
-
-    #  HELPERS
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    def _lbl(self, parent, text, pack=True):
-        l = tk.Label(parent, text=text, font=F_HDR, fg=C_G2, bg=BG_ROOT, anchor="w")
-        if pack:
-            l.pack(fill="x", pady=(0, 4))
-        return l
-
-    def _sq_btn(self, parent, text, cmd,
-                fg=C_WH, bg=BG_IN, hover=BG_HOV,
-                font=F_BTN, padx=18, pady=7):
-        b = tk.Button(parent, text=text, font=font,
-                      fg=fg, bg=bg,
-                      activeforeground=fg, activebackground=hover,
-                      relief="flat", bd=0, padx=padx, pady=pady,
-                      cursor="hand2", command=cmd)
-        b.bind("<Enter>", lambda _: b.configure(bg=hover))
-        b.bind("<Leave>", lambda _: b.configure(bg=bg))
-        return b
-
-    def _steps(self, steps: list):
-        for label, delay in steps:
-            hx = "".join(random.choices("0123456789abcdef", k=10))
-            self._ln(f"        ▸ {label:<48}  0x{hx}", "g3")
-            self._sleep(delay)
-
-    def _ln(self, text: str, tag):
-        def _do():
-            self.log.configure(state="normal")
-            if tag:
-                self.log.insert("end", text + "\n", tag)
-            else:
-                self.log.insert("end", text + "\n")
-            self.log.see("end")
-            self.log.configure(state="disabled")
-        self.root.after(0, _do)
-
-    def _clear_log(self):
-        self.log.configure(state="normal")
-        self.log.delete("1.0", "end")
-        self.log.configure(state="disabled")
-        self._ln("[K4LI]  Log cleared.", "g3")
-
-    def _sleep(self, s: float):
-        time.sleep(s)
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     #  HTA → XLSM TAB
