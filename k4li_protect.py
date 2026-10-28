@@ -98,9 +98,15 @@ class K4LIApp:
         self.motw_out_var  = tk.StringVar(value="")
         self.motw_running  = False
 
+        # Wrap tab state
+        self.wrap_hta_path = tk.StringVar(value="")
+        self.wrap_out_var  = tk.StringVar(value="")
+        self.wrap_running  = False
+
         self._prot_canvas  = None
         self._conv_canvas  = None
         self._motw_canvas  = None
+        self._wrap_canvas  = None
         self._active_scroll_canvas = None
 
         self._build()
@@ -181,18 +187,25 @@ class K4LIApp:
                                    fg=C_G3, bg=BG_ROOT, relief="flat", bd=0,
                                    padx=22, pady=5, cursor="hand2",
                                    command=lambda: self._sw("motw"))
+        self.btn_wrap = tk.Button(bar, text="WRAP TO EXE", font=F_TAB,
+                                   fg=C_G3, bg=BG_ROOT, relief="flat", bd=0,
+                                   padx=22, pady=5, cursor="hand2",
+                                   command=lambda: self._sw("wrap"))
         self.btn_prot.pack(side="left", padx=(18, 4), pady=4)
         self.btn_conv.pack(side="left", padx=(0, 4), pady=4)
         self.btn_motw.pack(side="left", padx=(0, 4), pady=4)
+        self.btn_wrap.pack(side="left", padx=(0, 4), pady=4)
 
     def _sw(self, tab: str):
         self.active_tab = tab
         self.frm_prot.pack_forget()
         self.frm_conv.pack_forget()
         self.frm_motw.pack_forget()
+        self.frm_wrap.pack_forget()
         self.btn_prot.configure(fg=C_G3, bg=BG_ROOT)
         self.btn_conv.configure(fg=C_G3, bg=BG_ROOT)
         self.btn_motw.configure(fg=C_G3, bg=BG_ROOT)
+        self.btn_wrap.configure(fg=C_G3, bg=BG_ROOT)
         if tab == "protect":
             self.btn_prot.configure(fg=C_WH, bg=BG_CARD)
             self.frm_prot.pack(fill="both", expand=True)
@@ -201,10 +214,14 @@ class K4LIApp:
             self.btn_conv.configure(fg=C_WH, bg=BG_CARD)
             self.frm_conv.pack(fill="both", expand=True)
             self._active_scroll_canvas = self._conv_canvas
-        else:
+        elif tab == "motw":
             self.btn_motw.configure(fg=C_WH, bg=BG_CARD)
             self.frm_motw.pack(fill="both", expand=True)
             self._active_scroll_canvas = self._motw_canvas
+        else:
+            self.btn_wrap.configure(fg=C_WH, bg=BG_CARD)
+            self.frm_wrap.pack(fill="both", expand=True)
+            self._active_scroll_canvas = self._wrap_canvas
 
     def _mk_content(self):
         c = tk.Frame(self.root, bg=BG_ROOT)
@@ -212,9 +229,11 @@ class K4LIApp:
         self.frm_prot = tk.Frame(c, bg=BG_ROOT)
         self.frm_conv = tk.Frame(c, bg=BG_ROOT)
         self.frm_motw = tk.Frame(c, bg=BG_ROOT)
+        self.frm_wrap = tk.Frame(c, bg=BG_ROOT)
         self._build_protect_tab()
         self._build_convert_tab()
         self._build_motw_tab()
+        self._build_wrap_tab()
         self._sw("protect")
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -3029,6 +3048,268 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         self.prog_lbl.configure(text="Complete ✓", fg=C_GRN)
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    #  WRAP TO EXE TAB
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def _build_wrap_tab(self):
+        p = self.frm_wrap
+        _scroll_inner, self._wrap_canvas = self._scrollable_frame(p)
+        wrap = tk.Frame(_scroll_inner, bg=BG_ROOT, padx=22, pady=16)
+        wrap.pack(fill="both", expand=True)
+
+        # ── Info banner ───────────────────────────────────────────────────
+        info = tk.Frame(wrap, bg=BG_CARD, padx=14, pady=10)
+        info.pack(fill="x", pady=(0, 14))
+        tk.Label(info, text="HTA → EXE WRAPPER  (iexpress — built into Windows)",
+                 font=("Segoe UI", 9, "bold"), fg=C_CYN, bg=BG_CARD,
+                 anchor="w").pack(fill="x")
+        tk.Label(info,
+                 text="Bundles your .hta inside a self-extracting .exe using Windows iexpress.\n"
+                      "User downloads .exe \u2192 clicks Run once \u2192 .hta launches silently (no 2nd warning).\n"
+                      "Requires: Windows (iexpress.exe is built into System32 \u2014 no install needed).",
+                 font=("Segoe UI", 8), fg=C_G2, bg=BG_CARD, anchor="w",
+                 justify="left").pack(fill="x", pady=(4, 0))
+
+        # ── HTA picker ───────────────────────────────────────────────────
+        self._lbl(wrap, "SELECT  .HTA  FILE  TO  WRAP").pack(fill="x", pady=(0, 5))
+        row_hta = tk.Frame(wrap, bg=BG_ROOT)
+        row_hta.pack(fill="x", pady=(0, 14))
+        pb = tk.Frame(row_hta, bg=BD_MID, padx=1, pady=1)
+        pb.pack(side="left", fill="x", expand=True)
+        pbi = tk.Frame(pb, bg=BG_IN)
+        pbi.pack(fill="x")
+        self.wrap_hta_lbl = tk.Label(pbi, textvariable=self.wrap_hta_path,
+                                      font=F_MONO, fg=C_G3, bg=BG_IN,
+                                      anchor="w", padx=10, pady=7)
+        self.wrap_hta_lbl.pack(fill="x")
+        self._sq_btn(row_hta, "PICK .HTA", self._pick_wrap_hta,
+                     fg=C_WH, bg=BG_IN, hover=BG_HOV
+                     ).pack(side="right", padx=(8, 0))
+
+        # ── Output preview ────────────────────────────────────────────────
+        self._lbl(wrap, "OUTPUT  EXE  (same folder as .hta)").pack(fill="x", pady=(0, 5))
+        out_brd = tk.Frame(wrap, bg=BD_MID, padx=1, pady=1)
+        out_brd.pack(fill="x", pady=(0, 14))
+        out_inn = tk.Frame(out_brd, bg=BG_IN)
+        out_inn.pack(fill="x")
+        self.wrap_out_lbl = tk.Label(out_inn, textvariable=self.wrap_out_var,
+                                      font=F_MONO, fg=C_G3, bg=BG_IN,
+                                      anchor="w", padx=10, pady=7)
+        self.wrap_out_lbl.pack(fill="x")
+
+        # ── Wrap button ───────────────────────────────────────────────────
+        act = tk.Frame(wrap, bg=BG_ROOT)
+        act.pack(fill="x", pady=(0, 14))
+        self.wrap_btn = self._sq_btn(act, "  WRAP  TO  EXE",
+                                      self._start_wrap,
+                                      fg=BG_ROOT, bg=C_CYN, hover="#22d3ee",
+                                      font=F_BTN_LG, padx=28, pady=10)
+        self.wrap_btn.pack(side="left")
+        tk.Label(act,
+                 text="Uses Windows iexpress · no compiler · no install · single .exe output",
+                 font=("Segoe UI", 8), fg=C_G3, bg=BG_ROOT
+                 ).pack(side="left", padx=(14, 0))
+
+        # ── Log ───────────────────────────────────────────────────────────
+        lgh = tk.Frame(wrap, bg=BG_ROOT)
+        lgh.pack(fill="x", pady=(0, 5))
+        self._lbl(lgh, "WRAP  LOG", pack=False).pack(side="left")
+        tk.Button(lgh, text="CLEAR", font=("Segoe UI", 8), fg=C_G3,
+                  bg=BG_ROOT, relief="flat", bd=0, cursor="hand2",
+                  command=self._clear_wrap_log).pack(side="right")
+
+        lo = tk.Frame(wrap, bg=BD_DIM, padx=1, pady=1)
+        lo.pack(fill="both", expand=True)
+        li = tk.Frame(lo, bg=BG_PANEL)
+        li.pack(fill="both", expand=True)
+        sb = tk.Scrollbar(li, bg=BG_PANEL, troughcolor=BG_PANEL,
+                          activebackground=C_G3, bd=0, width=6, relief="flat")
+        sb.pack(side="right", fill="y")
+        self.wrap_log = tk.Text(li, bg=BG_PANEL, fg=C_G2, font=F_MONO,
+                                relief="flat", bd=0, padx=12, pady=10,
+                                yscrollcommand=sb.set, state="disabled",
+                                wrap="word", cursor="arrow",
+                                selectbackground=BG_CARD,
+                                insertbackground=C_WH)
+        self.wrap_log.pack(fill="both", expand=True)
+        sb.configure(command=self.wrap_log.yview)
+        for tag, col in (("wh", C_WH), ("gn", C_GRN), ("cy", C_CYN),
+                         ("am", C_AMB), ("rd", C_RED),
+                         ("g1", C_G1), ("g2", C_G2), ("g3", C_G3),
+                         ("dm", BD_LIT)):
+            self.wrap_log.tag_config(tag, foreground=col)
+
+        self._wrap_ln("[WRAP]  HTA → EXE Wrapper  |  Windows iexpress self-extractor", "wh")
+        self._wrap_ln("        Pick your .hta then click WRAP TO EXE.", "g3")
+        self._wrap_ln("", None)
+
+    def _wrap_ln(self, text: str, tag):
+        def _do():
+            self.wrap_log.configure(state="normal")
+            if tag:
+                self.wrap_log.insert("end", text + "\n", tag)
+            else:
+                self.wrap_log.insert("end", text + "\n")
+            self.wrap_log.see("end")
+            self.wrap_log.configure(state="disabled")
+        self.root.after(0, _do)
+
+    def _clear_wrap_log(self):
+        self.wrap_log.configure(state="normal")
+        self.wrap_log.delete("1.0", "end")
+        self.wrap_log.configure(state="disabled")
+        self._wrap_ln("[WRAP]  Log cleared.", "g3")
+
+    def _pick_wrap_hta(self):
+        path = filedialog.askopenfilename(
+            title="Select HTA File to Wrap",
+            filetypes=[("HTA Application", "*.hta"), ("All files", "*.*")]
+        )
+        if not path:
+            return
+        self.wrap_hta_path.set(path)
+        self.wrap_hta_lbl.configure(fg=C_G1)
+        stem = Path(path).stem
+        out_name = f"{stem}.exe"
+        self.wrap_out_var.set(str(Path(path).parent / out_name))
+        self.wrap_out_lbl.configure(fg=C_CYN)
+        sz = os.path.getsize(path)
+        szs = f"{sz/1024:.1f} KB" if sz < 1_048_576 else f"{sz/1_048_576:.2f} MB"
+        self._wrap_ln(f"[HTA]   {Path(path).name}  ({szs})", "wh")
+        self._wrap_ln(f"[OUT]   {out_name}", "cy")
+
+    def _start_wrap(self):
+        if self.wrap_running:
+            return
+        hta_path = self.wrap_hta_path.get()
+        if not hta_path or not os.path.isfile(hta_path):
+            self._wrap_ln("[ERROR]  No .hta file selected.", "rd")
+            return
+        self.wrap_running = True
+        self.wrap_btn.configure(state="disabled", fg=C_G3, bg=BG_CARD)
+        threading.Thread(target=self._run_wrap, daemon=True).start()
+
+    def _run_wrap(self):
+        import tempfile, shutil
+        try:
+            hta_path = Path(self.wrap_hta_path.get())
+            out_exe  = hta_path.parent / f"{hta_path.stem}.exe"
+            tmp_dir  = Path(tempfile.mkdtemp(prefix="k4li_wrap_"))
+
+            self._wrap_ln("\n[1/4]  Preparing build folder...", "cy")
+            time.sleep(0.1)
+
+            # Copy .hta into temp dir
+            hta_tmp = tmp_dir / hta_path.name
+            shutil.copy2(str(hta_path), str(hta_tmp))
+
+            # Silent launcher batch — starts mshta with no console window
+            bat_name = f"_run_{hta_path.stem}.bat"
+            bat_tmp  = tmp_dir / bat_name
+            bat_tmp.write_text(
+                f'@echo off\n'
+                f'start "" mshta.exe "%~dp0{hta_path.name}"\n',
+                encoding="ascii"
+            )
+            self._wrap_ln(f"       {hta_path.name} + launcher batch  ✓", "g3")
+            time.sleep(0.1)
+
+            # Build iexpress .sed directive file
+            sed_path = tmp_dir / "wrap.sed"
+            sed_content = (
+                "[Version]\r\n"
+                "Class=IEXPRESS\r\n"
+                "SEDVersion=3\r\n"
+                "[Options]\r\n"
+                "PackagePurpose=InstallApp\r\n"
+                "ShowInstallProgramWindow=0\r\n"
+                "HideExtractAnimation=1\r\n"
+                "UseLongFileName=1\r\n"
+                "InsideCompressed=0\r\n"
+                "CAB_FixedSize=0\r\n"
+                "CAB_ResvCodeSigning=0\r\n"
+                "RebootMode=N\r\n"
+                "InstallPrompt=\r\n"
+                "DisplayLicense=\r\n"
+                "FinishMessage=\r\n"
+                f"TargetName={out_exe}\r\n"
+                f"FriendlyName={hta_path.stem}\r\n"
+                f"AppLaunched={bat_name}\r\n"
+                "PostInstallCmd=<None>\r\n"
+                "AdminQuietInstMode=0\r\n"
+                "UserQuietMode=1\r\n"
+                "ListboxTitle=\r\n"
+                "ListboxMessage=\r\n"
+                "ShortSFXWindowTitle=\r\n"
+                "SourceFiles=SourceFiles\r\n"
+                "[Strings]\r\n"
+                "InstallPrompt=\r\n"
+                "DisplayLicense=\r\n"
+                "FinishMessage=\r\n"
+                f"TargetName={out_exe}\r\n"
+                f"FriendlyName={hta_path.stem}\r\n"
+                f"AppLaunched={bat_name}\r\n"
+                "PostInstallCmd=<None>\r\n"
+                "ListboxTitle=\r\n"
+                "ListboxMessage=\r\n"
+                "ShortSFXWindowTitle=\r\n"
+                f"[SourceFiles]\r\n"
+                f"SourceFiles0={tmp_dir}\\\r\n"
+                f"[SourceFiles0]\r\n"
+                f"%FILE0%={hta_path.name}\r\n"
+                f"%FILE1%={bat_name}\r\n"
+            )
+            sed_path.write_text(sed_content, encoding="ascii")
+
+            self._wrap_ln("\n[2/4]  Writing iexpress directive...", "cy")
+            time.sleep(0.1)
+            self._wrap_ln("       wrap.sed  ✓", "g3")
+
+            self._wrap_ln("\n[3/4]  Running iexpress (Windows built-in)...", "cy")
+            time.sleep(0.1)
+
+            iexpress = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "iexpress.exe"
+            if not iexpress.exists():
+                self._wrap_ln("[ERROR]  iexpress.exe not found in System32.", "rd")
+                self._wrap_ln("         This tool requires Windows.", "am")
+                return
+
+            r = subprocess.run(
+                [str(iexpress), "/N", "/Q", str(sed_path)],
+                capture_output=True, text=True, timeout=60
+            )
+
+            self._wrap_ln("\n[4/4]  Verifying output...", "cy")
+            time.sleep(0.1)
+
+            if out_exe.is_file():
+                sz  = out_exe.stat().st_size
+                szs = f"{sz/1024:.1f} KB" if sz < 1_048_576 else f"{sz/1_048_576:.2f} MB"
+                self._wrap_ln(f"       {out_exe.name}  ({szs})  ✓", "gn")
+                self._wrap_ln("\n" + "─" * 60, "dm")
+                self._wrap_ln("[OK]    EXE wrapper created successfully.", "gn")
+                self._wrap_ln(f"        File : {out_exe}", "g2")
+                self._wrap_ln("─" * 60, "dm")
+                self._wrap_ln(
+                    "\n[INFO]  User downloads .exe → clicks Run once\n"
+                    "        → HTA launches silently (no second MOTW warning)  ✓", "cy")
+            else:
+                self._wrap_ln("[ERROR]  EXE not created. iexpress may have failed.", "rd")
+                if r.stdout:
+                    self._wrap_ln(r.stdout[:500], "am")
+                if r.stderr:
+                    self._wrap_ln(r.stderr[:500], "rd")
+
+        except Exception as e:
+            self._wrap_ln(f"\n[ERROR]  {e}", "rd")
+        finally:
+            try:
+                shutil.rmtree(str(tmp_dir), ignore_errors=True)
+            except Exception:
+                pass
+            self.wrap_running = False
+            self.root.after(0, lambda: self.wrap_btn.configure(
+                state="normal", fg=BG_ROOT, bg=C_CYN))
+
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     #  REMOVE MOTW TAB
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
