@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# v2.4 — fixed EXE launch: direct SaveToFile instead of unreliable CallByName
+# v2.5 — added HTA → XLSM tab: Excel macro wrapper with char-swap obfuscation
 """
 K4LI EXE PROTECT — Advanced EXE Protection Suite v2.0
 """
