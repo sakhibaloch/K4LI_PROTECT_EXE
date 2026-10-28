@@ -98,9 +98,16 @@ class K4LIApp:
         self.xlsx_out_var  = tk.StringVar(value="")
         self.xlsx_running  = False
 
-        self._prot_canvas  = None
-        self._conv_canvas  = None
-        self._xlsx_canvas  = None
+        # EXE BUILDER tab state
+        self.builder_icon_path = tk.StringVar(value="")
+        self.builder_app_name  = tk.StringVar(value="MyApp")
+        self.builder_out_dir   = tk.StringVar(value="")
+        self.builder_running   = False
+
+        self._prot_canvas    = None
+        self._conv_canvas    = None
+        self._xlsx_canvas    = None
+        self._builder_canvas = None
         self._active_scroll_canvas = None
 
         self._build()
@@ -181,18 +188,25 @@ class K4LIApp:
                                    fg=C_G3, bg=BG_ROOT, relief="flat", bd=0,
                                    padx=22, pady=5, cursor="hand2",
                                    command=lambda: self._sw("xlsx"))
+        self.btn_builder = tk.Button(bar, text="EXE BUILDER", font=F_TAB,
+                                      fg=C_G3, bg=BG_ROOT, relief="flat", bd=0,
+                                      padx=22, pady=5, cursor="hand2",
+                                      command=lambda: self._sw("builder"))
         self.btn_prot.pack(side="left", padx=(18, 4), pady=4)
         self.btn_conv.pack(side="left", padx=(0, 4), pady=4)
         self.btn_xlsx.pack(side="left", padx=(0, 4), pady=4)
+        self.btn_builder.pack(side="left", padx=(0, 4), pady=4)
 
     def _sw(self, tab: str):
         self.active_tab = tab
         self.frm_prot.pack_forget()
         self.frm_conv.pack_forget()
         self.frm_xlsx.pack_forget()
+        self.frm_builder.pack_forget()
         self.btn_prot.configure(fg=C_G3, bg=BG_ROOT)
         self.btn_conv.configure(fg=C_G3, bg=BG_ROOT)
         self.btn_xlsx.configure(fg=C_G3, bg=BG_ROOT)
+        self.btn_builder.configure(fg=C_G3, bg=BG_ROOT)
         if tab == "protect":
             self.btn_prot.configure(fg=C_WH, bg=BG_CARD)
             self.frm_prot.pack(fill="both", expand=True)
@@ -201,20 +215,26 @@ class K4LIApp:
             self.btn_conv.configure(fg=C_WH, bg=BG_CARD)
             self.frm_conv.pack(fill="both", expand=True)
             self._active_scroll_canvas = self._conv_canvas
-        else:
+        elif tab == "xlsx":
             self.btn_xlsx.configure(fg=C_WH, bg=BG_CARD)
             self.frm_xlsx.pack(fill="both", expand=True)
             self._active_scroll_canvas = self._xlsx_canvas
+        else:
+            self.btn_builder.configure(fg=C_WH, bg=BG_CARD)
+            self.frm_builder.pack(fill="both", expand=True)
+            self._active_scroll_canvas = self._builder_canvas
 
     def _mk_content(self):
         c = tk.Frame(self.root, bg=BG_ROOT)
         c.pack(fill="both", expand=True)
-        self.frm_prot = tk.Frame(c, bg=BG_ROOT)
-        self.frm_conv = tk.Frame(c, bg=BG_ROOT)
-        self.frm_xlsx = tk.Frame(c, bg=BG_ROOT)
+        self.frm_prot    = tk.Frame(c, bg=BG_ROOT)
+        self.frm_conv    = tk.Frame(c, bg=BG_ROOT)
+        self.frm_xlsx    = tk.Frame(c, bg=BG_ROOT)
+        self.frm_builder = tk.Frame(c, bg=BG_ROOT)
         self._build_protect_tab()
         self._build_convert_tab()
         self._build_xlsx_tab()
+        self._build_builder_tab()
         self._sw("protect")
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -3381,6 +3401,295 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
                 fg=C_GRN if pct == 100 else C_WH
             )
         self.root.after(0, _do)
+
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    #  EXE BUILDER TAB
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def _build_builder_tab(self):
+        import os
+        p = self.frm_builder
+        _scroll_inner, self._builder_canvas = self._scrollable_frame(p)
+        wrap = tk.Frame(_scroll_inner, bg=BG_ROOT, padx=22, pady=16)
+        wrap.pack(fill="both", expand=True)
+
+        # ── Info banner ────────────────────────────────────────────────────
+        info = tk.Frame(wrap, bg="#1e293b", padx=14, pady=10)
+        info.pack(fill="x", pady=(0, 18))
+        tk.Label(info, text="SOURCE EXE", font=("Segoe UI", 8, "bold"),
+                 fg=C_G3, bg="#1e293b").pack(anchor="w")
+        src_path = str(Path(__file__).parent / "myoldapp_extracted" / "notepadplusplus.exe")
+        tk.Label(info, text=src_path, font=("Consolas", 9),
+                 fg=C_CYN, bg="#1e293b", wraplength=620, justify="left").pack(anchor="w", pady=(2, 0))
+
+        # ── App Name ───────────────────────────────────────────────────────
+        self._lbl(wrap, "APP NAME").pack(fill="x", pady=(0, 5))
+        row_name = tk.Frame(wrap, bg=BG_ROOT)
+        row_name.pack(fill="x", pady=(0, 14))
+        ent_name = tk.Entry(row_name, textvariable=self.builder_app_name,
+                            font=("Consolas", 10), bg=BG_CARD, fg=C_WH,
+                            insertbackground=C_WH, relief="flat", bd=0,
+                            highlightthickness=1, highlightbackground=BD_DIM,
+                            highlightcolor=C_CYN)
+        ent_name.pack(fill="x", ipady=7, padx=(0, 0))
+
+        # ── App Icon ───────────────────────────────────────────────────────
+        self._lbl(wrap, "APP ICON  (.ico)").pack(fill="x", pady=(0, 5))
+        row_ico = tk.Frame(wrap, bg=BG_ROOT)
+        row_ico.pack(fill="x", pady=(0, 14))
+        ent_ico = tk.Entry(row_ico, textvariable=self.builder_icon_path,
+                           font=("Consolas", 9), bg=BG_CARD, fg=C_G3,
+                           insertbackground=C_WH, relief="flat", bd=0,
+                           highlightthickness=1, highlightbackground=BD_DIM,
+                           highlightcolor=C_CYN, state="readonly")
+        ent_ico.pack(side="left", fill="x", expand=True, ipady=6)
+        tk.Frame(row_ico, bg=BG_ROOT, width=6).pack(side="left")
+        self._sq_btn(row_ico, "BROWSE", lambda: self._pick_builder_icon(),
+                     bg=BG_CARD).pack(side="left")
+
+        # ── Output folder ──────────────────────────────────────────────────
+        self._lbl(wrap, "OUTPUT FOLDER").pack(fill="x", pady=(0, 5))
+        row_out = tk.Frame(wrap, bg=BG_ROOT)
+        row_out.pack(fill="x", pady=(0, 18))
+        ent_out = tk.Entry(row_out, textvariable=self.builder_out_dir,
+                           font=("Consolas", 9), bg=BG_CARD, fg=C_G3,
+                           insertbackground=C_WH, relief="flat", bd=0,
+                           highlightthickness=1, highlightbackground=BD_DIM,
+                           highlightcolor=C_CYN, state="readonly")
+        ent_out.pack(side="left", fill="x", expand=True, ipady=6)
+        tk.Frame(row_out, bg=BG_ROOT, width=6).pack(side="left")
+        self._sq_btn(row_out, "BROWSE", lambda: self._pick_builder_out(),
+                     bg=BG_CARD).pack(side="left")
+
+        # ── Build button ───────────────────────────────────────────────────
+        self._ln(wrap).pack(fill="x", pady=(0, 14))
+        btn_build = tk.Button(wrap, text="▶  BUILD EXE",
+                              font=("Segoe UI", 11, "bold"),
+                              fg=BG_ROOT, bg=C_GRN, relief="flat", bd=0,
+                              padx=30, pady=10, cursor="hand2",
+                              activebackground=C_GRN, activeforeground=BG_ROOT,
+                              command=self._start_builder)
+        btn_build.pack(fill="x", pady=(0, 18))
+
+        # ── Log area ───────────────────────────────────────────────────────
+        self._lbl(wrap, "BUILD LOG").pack(fill="x", pady=(0, 5))
+        log_frame = tk.Frame(wrap, bg=BG_CARD, padx=1, pady=1)
+        log_frame.pack(fill="both", expand=True)
+        self.builder_log = tk.Text(log_frame, bg=BG_CARD, fg=C_G3,
+                                   font=("Consolas", 9), relief="flat",
+                                   state="disabled", wrap="word",
+                                   height=14, bd=0,
+                                   highlightthickness=0)
+        self.builder_log.pack(fill="both", expand=True, padx=10, pady=8)
+        self.builder_log.tag_configure("ok",  foreground=C_GRN)
+        self.builder_log.tag_configure("err", foreground=C_RED)
+        self.builder_log.tag_configure("hd",  foreground=C_CYN)
+
+    def _pick_builder_icon(self):
+        from tkinter import filedialog
+        p = filedialog.askopenfilename(
+            title="Select icon (.ico)",
+            filetypes=[("ICO files", "*.ico"), ("All files", "*.*")])
+        if p:
+            self.builder_icon_path.set(p)
+
+    def _pick_builder_out(self):
+        from tkinter import filedialog
+        p = filedialog.askdirectory(title="Select output folder")
+        if p:
+            self.builder_out_dir.set(p)
+
+    def _bldr_ln(self, text: str, tag: str = ""):
+        def _do():
+            self.builder_log.configure(state="normal")
+            self.builder_log.insert("end", text + "\n", tag if tag else ())
+            self.builder_log.see("end")
+            self.builder_log.configure(state="disabled")
+        self.root.after(0, _do)
+
+    def _clear_builder_log(self):
+        self.builder_log.configure(state="normal")
+        self.builder_log.delete("1.0", "end")
+        self.builder_log.configure(state="disabled")
+
+    def _start_builder(self):
+        if self.builder_running:
+            return
+        import threading
+        self._clear_builder_log()
+        self.builder_running = True
+        threading.Thread(target=self._run_builder, daemon=True).start()
+
+    def _run_builder(self):
+        import shutil, struct, os
+
+        app_name = self.builder_app_name.get().strip() or "MyApp"
+        ico_path = self.builder_icon_path.get().strip()
+        out_dir  = self.builder_out_dir.get().strip()
+
+        src = Path(__file__).parent / "myoldapp_extracted" / "notepadplusplus.exe"
+
+        self._bldr_ln(f"Source : {src}", "hd")
+        self._bldr_ln(f"Name   : {app_name}", "hd")
+        if ico_path:
+            self._bldr_ln(f"Icon   : {ico_path}", "hd")
+        self._bldr_ln("")
+
+        if not src.exists():
+            self._bldr_ln(f"ERROR: source not found: {src}", "err")
+            self.builder_running = False
+            return
+
+        if not out_dir:
+            out_dir = str(src.parent)
+            self._bldr_ln(f"Output folder not set — using {out_dir}", "")
+
+        safe_name = "".join(c for c in app_name if c.isalnum() or c in " _-").strip() or "MyApp"
+        out_path = Path(out_dir) / f"{safe_name}.exe"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+
+        self._bldr_ln(f"Copying EXE …")
+        try:
+            shutil.copy2(str(src), str(out_path))
+        except Exception as e:
+            self._bldr_ln(f"ERROR: copy failed — {e}", "err")
+            self.builder_running = False
+            return
+        self._bldr_ln(f"Copied → {out_path}", "ok")
+
+        # patch version strings (works cross-platform, pure Python)
+        self._bldr_ln("Patching version strings …")
+        try:
+            self._update_version_strings(str(out_path), app_name)
+            self._bldr_ln("Version strings patched", "ok")
+        except Exception as e:
+            self._bldr_ln(f"WARNING: version patch skipped — {e}", "")
+
+        # replace icon (Windows only via ctypes UpdateResource)
+        if ico_path:
+            self._bldr_ln("Replacing icon …")
+            try:
+                self._update_icon(str(out_path), ico_path)
+                self._bldr_ln("Icon replaced", "ok")
+            except Exception as e:
+                self._bldr_ln(f"WARNING: icon replace skipped — {e}", "")
+
+        self._bldr_ln("")
+        self._bldr_ln(f"Done!  →  {out_path}", "ok")
+        self.builder_running = False
+
+    # ── EXE patching helpers ───────────────────────────────────────────────────
+    def _update_version_strings(self, exe_path: str, app_name: str):
+        """Patch UTF-16LE version string fields in-place (pure Python, cross-platform)."""
+        with open(exe_path, "rb") as f:
+            data = bytearray(f.read())
+
+        fields = [
+            b"P\x00r\x00o\x00d\x00u\x00c\x00t\x00N\x00a\x00m\x00e\x00\x00\x00",
+            b"F\x00i\x00l\x00e\x00D\x00e\x00s\x00c\x00r\x00i\x00p\x00t\x00i\x00o\x00n\x00\x00\x00",
+            b"O\x00r\x00i\x00g\x00i\x00n\x00a\x00l\x00F\x00i\x00l\x00e\x00n\x00a\x00m\x00e\x00\x00\x00",
+            b"I\x00n\x00t\x00e\x00r\x00n\x00a\x00l\x00N\x00a\x00m\x00e\x00\x00\x00",
+        ]
+
+        new_utf16 = (app_name + "\x00").encode("utf-16-le")
+
+        changed = 0
+        for field_key in fields:
+            idx = 0
+            while True:
+                pos = data.find(field_key, idx)
+                if pos == -1:
+                    break
+                val_start = pos + len(field_key)
+                # advance past any padding to align to DWORD
+                while val_start < len(data) - 1 and data[val_start] == 0 and data[val_start + 1] == 0:
+                    # check if the next bytes are actual UTF-16LE text
+                    if val_start + 3 < len(data) and data[val_start + 2] != 0:
+                        break
+                    val_start += 2
+                # find end of current UTF-16LE string (double-null terminator)
+                end = val_start
+                while end + 1 < len(data):
+                    if data[end] == 0 and data[end + 1] == 0:
+                        end += 2
+                        break
+                    end += 2
+                old_len = end - val_start
+                if old_len <= 0:
+                    idx = pos + 1
+                    continue
+                # keep same byte length, pad/truncate as needed
+                patched = new_utf16[:old_len]
+                if len(patched) < old_len:
+                    patched = patched + b"\x00" * (old_len - len(patched))
+                data[val_start:end] = patched
+                changed += 1
+                idx = end
+
+        with open(exe_path, "wb") as f:
+            f.write(data)
+
+        if changed == 0:
+            raise RuntimeError("no version string fields found in binary")
+
+    def _update_icon(self, exe_path: str, ico_path: str):
+        """Replace RT_ICON/RT_GROUP_ICON resources using Windows UpdateResource API."""
+        import ctypes, struct, os, platform
+        if platform.system() != "Windows":
+            raise RuntimeError("icon replacement requires Windows")
+
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+        with open(ico_path, "rb") as f:
+            ico_data = f.read()
+
+        # parse ICO header: reserved(2) type(2) count(2) + ICONDIRENTRY*count
+        if len(ico_data) < 6:
+            raise ValueError("invalid ICO file")
+        _res, _typ, count = struct.unpack_from("<HHH", ico_data, 0)
+        if _typ != 1:
+            raise ValueError("not an ICO file")
+
+        # read each image
+        images = []
+        for i in range(count):
+            off = 6 + i * 16
+            w, h, cc, _res2, planes, bpp, size, img_off = struct.unpack_from("<BBBBHHll", ico_data, off)
+            img_bytes = ico_data[img_off: img_off + size]
+            images.append((w or 256, h or 256, planes, bpp, img_bytes))
+
+        # build GRPICONDIR for RT_GROUP_ICON resource
+        grp  = struct.pack("<HHH", 0, 1, count)
+        for idx2, (w, h, planes, bpp, img) in enumerate(images, start=1):
+            grp += struct.pack("<BBBBHHlH", w & 0xFF, h & 0xFF, 0, 0, planes, bpp, len(img), idx2)
+
+        hUpdate = k32.BeginUpdateResourceW(ctypes.c_wchar_p(exe_path), False)
+        if not hUpdate:
+            raise OSError(f"BeginUpdateResource failed: {ctypes.get_last_error()}")
+
+        RT_ICON       = 3
+        RT_GROUP_ICON = 14
+        LANG_NEUTRAL  = 0
+
+        ok = True
+        for idx2, (w, h, planes, bpp, img) in enumerate(images, start=1):
+            buf = (ctypes.c_byte * len(img))(*img)
+            if not k32.UpdateResourceW(hUpdate, ctypes.c_long(RT_ICON),
+                                        ctypes.c_long(idx2),
+                                        ctypes.c_ushort(LANG_NEUTRAL),
+                                        buf, ctypes.c_long(len(img))):
+                ok = False
+
+        grp_buf = (ctypes.c_byte * len(grp))(*grp)
+        if not k32.UpdateResourceW(hUpdate, ctypes.c_long(RT_GROUP_ICON),
+                                    ctypes.c_long(1),
+                                    ctypes.c_ushort(LANG_NEUTRAL),
+                                    grp_buf, ctypes.c_long(len(grp))):
+            ok = False
+
+        k32.EndUpdateResourceW(hUpdate, not ok)
+        if not ok:
+            raise OSError("UpdateResource failed for one or more resources")
 
 
 # ─── Entry Point ───────────────────────────────────────────────────────────────
