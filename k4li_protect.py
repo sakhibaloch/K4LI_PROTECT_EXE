@@ -3080,10 +3080,6 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         # ── Sheet content ─────────────────────────────────────────────────
         tk.Frame(wrap, bg=BD_DIM, height=1).pack(fill="x", pady=(0, 14))
         self._lbl(wrap, "EXCEL  SHEET  CONTENT  (optional)").pack(fill="x", pady=(0, 4))
-        tk.Label(wrap,
-                 text="Jo bhi likhein ga woh Sheet1 mein dikhega — file legitimate lagti hai.",
-                 font=F_SM, fg=C_G3, bg=BG_ROOT, anchor="w"
-                 ).pack(fill="x", pady=(0, 6))
         ct_brd = tk.Frame(wrap, bg=BD_MID, padx=1, pady=1)
         ct_brd.pack(fill="x", pady=(0, 14))
         ct_inn = tk.Frame(ct_brd, bg=BG_IN)
