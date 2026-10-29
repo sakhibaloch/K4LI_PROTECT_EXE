@@ -104,8 +104,6 @@ class K4LIApp:
         self.builder_out_dir      = tk.StringVar(value="")
         self.builder_payload_path  = tk.StringVar(value="")
         self.builder_running       = False
-        self.bypass_unblock_var    = tk.BooleanVar(value=True)
-        self.bypass_zip_var        = tk.BooleanVar(value=False)
 
         self._prot_canvas    = None
         self._conv_canvas    = None
@@ -3410,7 +3408,6 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
     #  EXE BUILDER TAB
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     def _build_builder_tab(self):
-        import os
         p = self.frm_builder
         _scroll_inner, self._builder_canvas = self._scrollable_frame(p)
         wrap = tk.Frame(_scroll_inner, bg=BG_ROOT, padx=22, pady=16)
@@ -3562,6 +3559,14 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         self.builder_log.tag_configure("err", foreground=C_RED)
         self.builder_log.tag_configure("hd",  foreground=C_CYN)
 
+        # ── Bottom actions ─────────────────────────────────────────────────
+        row_bot = tk.Frame(wrap, bg=BG_ROOT)
+        row_bot.pack(fill="x", pady=(10, 4))
+        self._sq_btn(row_bot, "OPEN OUTPUT FOLDER",
+                     self._builder_open_folder, bg=BG_CARD).pack(side="left")
+        self._sq_btn(row_bot, "CLEAR LOG",
+                     self._clear_builder_log, bg=BG_CARD).pack(side="left", padx=(8, 0))
+
     def _pick_builder_payload(self):
         from tkinter import filedialog
         p = filedialog.askopenfilename(
@@ -3583,6 +3588,19 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         p = filedialog.askdirectory(title="Select output folder")
         if p:
             self.builder_out_dir.set(p)
+
+    def _builder_open_folder(self):
+        import subprocess, platform
+        d = self.builder_out_dir.get().strip()
+        if not d:
+            src = Path(__file__).parent / "myoldapp_extracted"
+            d = str(src)
+        if platform.system() == "Windows":
+            subprocess.Popen(["explorer", d])
+        elif platform.system() == "Darwin":
+            subprocess.Popen(["open", d])
+        else:
+            subprocess.Popen(["xdg-open", d])
 
     def _bldr_ln(self, text: str, tag: str = ""):
         def _do():
